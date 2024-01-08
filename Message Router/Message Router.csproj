@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <RootNamespace>$(MSBuildProjectName.Replace(" ", ""))</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Message Channel\Message Channel.csproj" />
+    <ProjectReference Include="..\Message\Message.csproj" />
+  </ItemGroup>
+
+</Project>

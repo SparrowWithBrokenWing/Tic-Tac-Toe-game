@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <RootNamespace>ChannelFactory</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Message Channel\Message Channel.csproj" />
+    <ProjectReference Include="..\Message Recipient\Message Receiver.csproj" />
+    <ProjectReference Include="..\Message\Message.csproj" />
+  </ItemGroup>
+
+</Project>

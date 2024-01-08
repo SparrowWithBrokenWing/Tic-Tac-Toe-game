@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net6.0</TargetFramework>
+    <RootNamespace>MatchOrganizer</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  
+  <ItemGroup>
+    <ProjectReference Include="..\Computer Player\Computer Player.csproj" />
+    <ProjectReference Include="..\Correlation Identifier\Correlation Identifier.csproj" />
+    <ProjectReference Include="..\Dynamic Router\Dynamic Router.csproj" />
+    <ProjectReference Include="..\Match Data Model\Canonical Data Model.csproj" />
+    <ProjectReference Include="..\Message Channel Factory\Message Channel Factory.csproj" />
+    <ProjectReference Include="..\Message Channel\Message Channel.csproj" />
+    <ProjectReference Include="..\Message Content Enricher\Message Content Enricher.csproj" />
+    <ProjectReference Include="..\Message Dispatcher\Message Dispatcher.csproj" />
+    <ProjectReference Include="..\Message Recipient\Message Receiver.csproj" />
+    <ProjectReference Include="..\Message Router\Message Router.csproj" />
+    <ProjectReference Include="..\Message Transformation\Message Transformation.csproj" />
+    <ProjectReference Include="..\Message\Message.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,27 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>$(MSBuildProjectName.Replace(" ", ""))</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Correlation Identifier\Correlation Identifier.csproj" />
+    <ProjectReference Include="..\Dynamic Router\Dynamic Router.csproj" />
+    <ProjectReference Include="..\Message Channel Factory\Message Channel Factory.csproj" />
+    <ProjectReference Include="..\Message Channel\Message Channel.csproj" />
+    <ProjectReference Include="..\Message Content Enricher\Message Content Enricher.csproj" />
+    <ProjectReference Include="..\Message Dispatcher\Message Dispatcher.csproj" />
+    <ProjectReference Include="..\Message Recipient\Message Receiver.csproj" />
+    <ProjectReference Include="..\Message Router\Message Router.csproj" />
+    <ProjectReference Include="..\Message Transformation\Message Transformation.csproj" />
+    <ProjectReference Include="..\Message\Message.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Match Object\" />
+  </ItemGroup>
+
+</Project>
