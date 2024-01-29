@@ -16,7 +16,7 @@ namespace Unit_Tests_for_Analyzer_of_Computer_Player.Computer_Player.Analyzer.An
                     numberOfColumns)
                 .ToList());
 
-            var mockOfBoardState = new Mock<BoardState>((uint)numberOfRows, (uint)numberOfColumns, (uint)winningCondition);
+            var mockOfBoardState = new Mock<PlayedMoveTracker>((uint)numberOfRows, (uint)numberOfColumns, (uint)winningCondition);
             mockOfBoardState.CallBase = true;
             mockOfBoardState.Protected()
                 .Setup<IList<IList<IMove?>>>("_PlayedMoves")
@@ -49,7 +49,7 @@ namespace Unit_Tests_for_Analyzer_of_Computer_Player.Computer_Player.Analyzer.An
                     numberOfColumns)
                 .ToList());
 
-            var mockOfBoardState = new Mock<BoardState>((uint)numberOfRows, (uint)numberOfColumns, (uint)winningCondition);
+            var mockOfBoardState = new Mock<PlayedMoveTracker>((uint)numberOfRows, (uint)numberOfColumns, (uint)winningCondition);
             mockOfBoardState.CallBase = true;
             mockOfBoardState.Protected()
                 .Setup<IList<IList<IMove?>>>("_PlayedMoves")
