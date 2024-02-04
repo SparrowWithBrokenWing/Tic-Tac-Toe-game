@@ -8,18 +8,18 @@ namespace Match
     {
         public FeatureIntegrableChannel(IMessageSendingFeature channelFeature, IChannel adaptedChannel)
         {
-            _feature = channelFeature;
-            _adaptedChannel = adaptedChannel;
+            _Feature = channelFeature;
+            _AdaptedChannel = adaptedChannel;
         }
 
-        private IChannel _adaptedChannel { get; set; }
+        private IChannel _AdaptedChannel { get; set; }
 
-        private IMessageSendingFeature _feature { get; set; }
+        private IMessageSendingFeature _Feature { get; set; }
 
         public void Send(IMessage message)
         {
-            _feature.Work(_adaptedChannel, message);
-            _adaptedChannel.Send(message);
+            _Feature.Work(_AdaptedChannel, message);
+            _AdaptedChannel.Send(message);
         }
     }
 
