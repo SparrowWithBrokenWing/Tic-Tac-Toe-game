@@ -1,16 +1,13 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
     <TargetFramework>net6.0</TargetFramework>
-    <RootNamespace>MatchOrganizer</RootNamespace>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <RootNamespace>$(MSBuildProjectName.Replace(" ", ""))</RootNamespace>
   </PropertyGroup>
-  
+
   <ItemGroup>
-    <ProjectReference Include="..\Recipients\Players\Computer Player\Computer Player.csproj" />
-    <ProjectReference Include="..\Match Data Model\Match Data Model.csproj" />
     <ProjectReference Include="..\Message System\Correlation Identifier\Correlation Identifier.csproj" />
     <ProjectReference Include="..\Message System\Dynamic Router\Dynamic Router.csproj" />
     <ProjectReference Include="..\Message System\Message Channel Factory\Message Channel Factory.csproj" />
@@ -21,6 +18,10 @@
     <ProjectReference Include="..\Message System\Message Router\Message Router.csproj" />
     <ProjectReference Include="..\Message System\Message Transformation\Message Transformation.csproj" />
     <ProjectReference Include="..\Message System\Message\Message.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Match Object\" />
   </ItemGroup>
 
 </Project>

@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>$(MSBuildProjectName.Replace(" ", ""))</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Moq" Version="4.20.70" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Match Data Model\Match Data Model.csproj" />
+    <ProjectReference Include="..\..\..\Message System\Message Channel\Message Channel.csproj" />
+    <ProjectReference Include="..\..\..\Message System\Message\Message.csproj" />
+  </ItemGroup>
+
+</Project>
