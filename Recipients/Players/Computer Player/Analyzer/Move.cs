@@ -41,46 +41,4 @@
             //&& this.BoardStateBeforeBeingPlayed.Equals(other.BoardStateBeforeBeingPlayed);
         }
     }
-
-    public interface IPreviousMoveSpecifiableMove : IMove
-    {
-        public IMove PreviousMove { set; }
-    }
-
-    public interface IPreviousMoveAccessibleMove : IMove
-    {
-        public IMove PreviousMove { get; }
-    }
-
-    public interface INextMovesPredictableMove : IMove
-    {
-        public ICollection<IMove> PredictableNextMoves { get; }
-    }
-
-    public interface INextMovesPredictedMove : IMove
-    {
-        public IEnumerable<IMove> PredictedNextMoves { get; }
-    }
-
-    public interface ICategorizableMove : IMove
-    {
-        public ICollection<IMoveType> CategorizableMoveTypes { get; }
-    }
-
-    public interface ICategorizedMove : IMove
-    {
-        public IEnumerable<IMoveType> CategorizedMoveTypes { get; }
-    }
-
-    public interface IMoveType { }
-    public interface IPossibleMoveType : IMoveType { }
-    public interface ITacticalMoveType : IPossibleMoveType { }
-
-    public interface IOffensiveMoveType : ITacticalMoveType { }
-    public interface IForkMoveType : IOffensiveMoveType { }
-    public interface IWinningMoveType : IOffensiveMoveType { }
-
-    public interface IDefensiveMoveType : ITacticalMoveType { }
-    public interface IBlockForkMoveType : IDefensiveMoveType { }
-    public interface IBlockWinningMoveType : IDefensiveMoveType { }
 }

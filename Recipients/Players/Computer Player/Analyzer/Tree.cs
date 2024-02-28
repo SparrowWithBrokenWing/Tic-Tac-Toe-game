@@ -3,6 +3,26 @@ using System.Collections;
 
 namespace ComputerPlayer
 {
+    public interface IPreviousMoveSpecifiableMove : IMove
+    {
+        public IMove PreviousMove { set; }
+    }
+
+    public interface IPreviousMoveAccessibleMove : IMove
+    {
+        public IMove PreviousMove { get; }
+    }
+
+    public interface INextMovesPredictableMove : IMove
+    {
+        public ICollection<IMove> PredictableNextMoves { get; }
+    }
+
+    public interface INextMovesPredictedMove : IMove
+    {
+        public IEnumerable<IMove> PredictedNextMoves { get; }
+    }
+
     // need to define an definition of IMoveRetriever that work base on another move retriever. 
     public class Tree
     {

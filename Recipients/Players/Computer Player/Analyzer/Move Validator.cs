@@ -1,48 +1,47 @@
-﻿namespace ComputerPlayer
+﻿namespace ComputerPlayer.Analyzer
 {
-    public interface IMoveCategorizer
+    // move validator will be used as dependencies of move factory
+
+    public interface IMoveTypeValidator
     {
-        public IEnumerable<IMoveType> Categorize(IMove move, IMoveRetriever moveRetriever, IBoard playingBoard);
+        public bool Validate(IMove validatedMove, IMoveRetriever moveRetriever, IBoard playingBoard);
     }
 
-    public class CompositeCategorizer : IMoveCategorizer
+    public sealed class CompositeMoveTypeValidator : IMoveTypeValidator
     {
-        public CompositeCategorizer(IEnumerable<IMoveCategorizer> categorizers)
+        public CompositeMoveTypeValidator(IEnumerable<IMoveTypeValidator> checkers)
         {
-            _Categorizers = categorizers;
+            _Checkers = checkers;
         }
 
-        protected IEnumerable<IMoveCategorizer> _Categorizers { get; private set; }
+        private IEnumerable<IMoveTypeValidator> _Checkers { get; set; }
 
-        public IEnumerable<IMoveType> Categorize(IMove move, IMoveRetriever moveRetriever, IBoard playingBoard)
+        public bool Validate(IMove validatedMove, IMoveRetriever moveRetriever, IBoard playingBoard)
         {
-            var result = new HashSet<IMoveType>();
-            foreach (var categorizer in _Categorizers)
+            foreach (var checker in _Checkers)
             {
-                var moveTypes = categorizer.Categorize(move, moveRetriever, playingBoard);
-                foreach (var moveType in moveTypes)
+                if (!checker.Validate(validatedMove, moveRetriever, playingBoard))
                 {
-                    result.Add(moveType);
+                    return false;
                 }
             }
-            return result;
+            return true;
         }
     }
 
-    public class PossibleMoveTypeCategorizer : IMoveCategorizer
+    public class PossibleMoveTypeValidator : IMoveTypeValidator
     {
-        public virtual IEnumerable<IMoveType> Categorize(IMove move, IMoveRetriever moveRetriever, IBoard playingBoard)
+        public virtual bool Validate(IMove validatedMove, IMoveRetriever moveRetriever, IBoard playingBoard)
         {
-            var result = new List<IMoveType>();
             var numberOfRows = playingBoard.NumberOfRows;
             var numberOfColumns = playingBoard.NumberOfColumns;
 
-            var isItAnUnplayedMove = (IMove move) =>
+            var isItAnUnplayedMove = (IMove validatedMove) =>
             {
                 foreach (var playedMove in moveRetriever)
                 {
-                    if (move.Row == playedMove.Row
-                    && move.Column == playedMove.Column)
+                    if (validatedMove.Row == playedMove.Row
+                    && validatedMove.Column == playedMove.Column)
                     {
                         return false;
                     }
@@ -50,37 +49,29 @@
                 return true;
             };
 
-            var isItInAnAllowedRangeMove = (IMove move) =>
+            var isItInAnAllowedRangeMove = (IMove validatedMove) =>
             {
-                return move.Row > 0 && move.Row <= numberOfRows
-                && move.Column > 0 && move.Column <= numberOfColumns;
+                return validatedMove.Row > 0 && validatedMove.Row <= numberOfRows
+                && validatedMove.Column > 0 && validatedMove.Column <= numberOfColumns;
             };
 
-            if (isItAnUnplayedMove(move)
-                && isItInAnAllowedRangeMove(move))
-            {
-                result.Add(new PossibleMoveType());
-            }
-
-            return result;
+            return isItAnUnplayedMove(validatedMove)
+                && isItInAnAllowedRangeMove(validatedMove);
         }
-
-        protected class PossibleMoveType : IPossibleMoveType { }
     }
 
-    public class TacticalMoveTypeCategorizer : PossibleMoveTypeCategorizer
+    public class TacticalMoveTypeValidator : PossibleMoveTypeValidator
     {
-        public override IEnumerable<IMoveType> Categorize(IMove move, IMoveRetriever moveRetriever, IBoard playingBoard)
+        public override bool Validate(IMove validatedMove, IMoveRetriever moveRetriever, IBoard playingBoard)
         {
-            var result = new List<IMoveType>(base.Categorize(move, moveRetriever, playingBoard));
             var winningCondition = playingBoard.WinningCondition;
 
-            var isThereAnyOtherMoveInsideTheSquareWithLengthAsTheWinningCondition = (IMove move) =>
+            var isThereAnyOtherMoveInsideTheSquareWithLengthAsTheWinningCondition = (IMove validatedMove) =>
             {
                 foreach (var playedMove in moveRetriever)
                 {
-                    if ((Math.Abs(playedMove.Row - move.Row) < (winningCondition - 1))
-                    && (Math.Abs(playedMove.Column - move.Column) < (winningCondition - 1)))
+                    if ((Math.Abs(playedMove.Row - validatedMove.Row) < (winningCondition - 1))
+                    && (Math.Abs(playedMove.Column - validatedMove.Column) < (winningCondition - 1)))
                     {
                         return true;
                     }
@@ -88,31 +79,24 @@
                 return false;
             };
 
-            if (isThereAnyOtherMoveInsideTheSquareWithLengthAsTheWinningCondition(move))
-            {
-                result.Add(new TacticalMoveType());
-            }
-
-            return result;
+            return base.Validate(validatedMove, moveRetriever, playingBoard)
+                && isThereAnyOtherMoveInsideTheSquareWithLengthAsTheWinningCondition(validatedMove);
         }
-
-        protected class TacticalMoveType : ITacticalMoveType { }
     }
 
-    public class OffensiveMoveTypeCategorizer : TacticalMoveTypeCategorizer
+    public class OffensiveMoveTypeValidator : TacticalMoveTypeValidator
     {
-        public override IEnumerable<IMoveType> Categorize(IMove move, IMoveRetriever moveRetriever, IBoard playingBoard)
+        public override bool Validate(IMove validatedMove, IMoveRetriever moveRetriever, IBoard playingBoard)
         {
-            var result = new List<IMoveType>(base.Categorize(move, moveRetriever, playingBoard));
             var winningCondition = playingBoard.WinningCondition;
 
-            var isThereAnyOtherMoveFromSamePlayerInsideTheSquareWithLengthAsTheWinningCondition = (IMove move) =>
+            var isThereAnyOtherMoveFromSamePlayerInsideTheSquareWithLengthAsTheWinningCondition = (IMove validatedMove) =>
             {
                 foreach (var playedMove in moveRetriever)
                 {
-                    if (move.Player.Equals(playedMove.Player)
-                    && Math.Abs(playedMove.Row - move.Row) < winningCondition
-                    && Math.Abs(playedMove.Column - move.Column) < winningCondition)
+                    if (validatedMove.Player.Equals(playedMove.Player)
+                    && Math.Abs(playedMove.Row - validatedMove.Row) < winningCondition
+                    && Math.Abs(playedMove.Column - validatedMove.Column) < winningCondition)
                     {
                         return true;
                     }
@@ -120,21 +104,15 @@
                 return false;
             };
 
-            if (isThereAnyOtherMoveFromSamePlayerInsideTheSquareWithLengthAsTheWinningCondition(move))
-            {
-                result.Add(new OffensiveMoveType());
-            }
-
-            return result;
+            return base.Validate(validatedMove, moveRetriever, playingBoard)
+                && isThereAnyOtherMoveFromSamePlayerInsideTheSquareWithLengthAsTheWinningCondition(validatedMove);
         }
-
-        protected class OffensiveMoveType : ITacticalMoveType { }
     }
 
-    public class ForkMoveTypeCategorizer : OffensiveMoveTypeCategorizer
+    public class ForkMoveTypeValidator : OffensiveMoveTypeValidator
     {
-        // need to change how to check. The check will come from back and front of checked move (2 tasks). Those tasks will change the value of satisfied move variable. If satisified move variable reach a value, those task will be cancel or will return.
-        public override IEnumerable<IMoveType> Categorize(IMove move, IMoveRetriever moveRetriever, IBoard playingBoard)
+        // need to change how to check. The check will come from back and front of checked validatedMove (2 tasks). Those tasks will change the value of satisfied validatedMove variable. If satisified validatedMove variable reach a value, those task will be cancel or will return.
+        public override bool Validate(IMove validatedMove, IMoveRetriever moveRetriever, IBoard playingBoard)
         {
             var winningCondition = playingBoard.WinningCondition;
             var numberOfRows = playingBoard.NumberOfRows;
@@ -144,8 +122,6 @@
             {
                 throw new ArgumentException();
             }
-
-            var result = new List<IMoveType>(base.Categorize(move, moveRetriever, playingBoard));
 
             var numberOfNeededSatisifedLineSegment = 2;
 
@@ -172,8 +148,8 @@
                     CancellationToken cancellationToken) =>
                 {
                     var checkedTimes = 0;
-                    var currentCheckedMoveRowIndex = move.Row;
-                    var currentChecedkMoveColumnIndex = move.Column;
+                    var currentCheckedMoveRowIndex = validatedMove.Row;
+                    var currentChecedkMoveColumnIndex = validatedMove.Column;
                     IMove? currentCheckedMove = null;
 
                     while (true)
@@ -198,7 +174,7 @@
                         else
 
                         {
-                            if (move.Player.Equals(currentCheckedMove.Player))
+                            if (validatedMove.Player.Equals(currentCheckedMove.Player))
                             {
                                 whenFoundPlayerMove();
                             }
@@ -222,7 +198,7 @@
                     getNextFrontMoveColumnIndex,
                     () =>
                     {
-                        // that unplayed move is the next winning move.
+                        // that unplayed validatedMove is the next winning validatedMove.
                         lock (handleFoundLocker)
                         {
                             if (isUnplayedMoveIgnored)
@@ -252,7 +228,7 @@
                     getNextBehindMoveColumnIndex,
                     () =>
                     {
-                        // that unplayed move is the next winning move.
+                        // that unplayed validatedMove is the next winning validatedMove.
                         lock (handleFoundLocker)
                         {
                             if (isUnplayedMoveIgnored)
@@ -340,27 +316,19 @@
 
             Task.WaitAll(checkVerticalLine, checkHorizontalLine, checkLeftDiagonal, checkRightDiagonal);
 
-            if (numberOfSatisfiedLineSegment >= 2)
-            {
-                result.Add(new ForkMoveType());
-            }
-
-            return result;
+            return base.Validate(validatedMove, moveRetriever, playingBoard)
+                && numberOfSatisfiedLineSegment >= 2;
         }
-
-        protected class ForkMoveType : IForkMoveType { }
     }
 
-    public class WinningMoveTypeCategorizer : OffensiveMoveTypeCategorizer
+    public class WinningMoveTypeValidator : OffensiveMoveTypeValidator
     {
-        public override IEnumerable<IMoveType> Categorize(IMove move, IMoveRetriever moveRetriever, IBoard playingBoard)
+        public override bool Validate(IMove validatedMove, IMoveRetriever moveRetriever, IBoard playingBoard)
         {
             if (!(playingBoard.WinningCondition - 2 > 0))
             {
                 throw new ArgumentException();
             }
-
-            var result = new List<IMoveType>(base.Categorize(move, moveRetriever, playingBoard));
 
             var winningCondition = playingBoard.WinningCondition;
             var numberOfRows = playingBoard.NumberOfRows;
@@ -390,8 +358,8 @@
                     CancellationToken cancellationToken) =>
                 {
                     var checkedTimes = 0;
-                    var currentCheckedMoveRowIndex = move.Row;
-                    var currentChecedkMoveColumnIndex = move.Column;
+                    var currentCheckedMoveRowIndex = validatedMove.Row;
+                    var currentChecedkMoveColumnIndex = validatedMove.Column;
                     IMove? currentCheckedMove = null;
 
                     while (true)
@@ -416,7 +384,7 @@
                         else
 
                         {
-                            if (move.Player.Equals(currentCheckedMove.Player))
+                            if (validatedMove.Player.Equals(currentCheckedMove.Player))
                             {
                                 whenFoundPlayerMove();
                             }
@@ -535,34 +503,26 @@
 
             Task.WaitAll(checkVerticalLine, checkHorizontalLine, checkLeftDiagonal, checkRightDiagonal);
 
-            if (numberOfSatisfiedLineSegment >= 1)
-            {
-                result.Add(new WinningMoveType());
-            }
-
-            return result;
+            return base.Validate(validatedMove, moveRetriever, playingBoard)
+                && numberOfSatisfiedLineSegment >= 1;
         }
-
-        protected class WinningMoveType : IWinningMoveType { }
     }
 
-    public class DefensiveMoveTypeCategorizer : TacticalMoveTypeCategorizer
+    public class DefensiveMoveTypeValidator : TacticalMoveTypeValidator
     {
-        public override IEnumerable<IMoveType> Categorize(IMove move, IMoveRetriever moveRetriever, IBoard playingBoard)
+        public override bool Validate(IMove validatedMove, IMoveRetriever moveRetriever, IBoard playingBoard)
         {
-            var result = new List<IMoveType>(base.Categorize(move, moveRetriever, playingBoard));
-
-            var isThereAnyOtherMoveFromOpponentInsideTheSquareWithLengthAsTheWinningCondition = (IMove move) =>
+            var isThereAnyOtherMoveFromOpponentInsideTheSquareWithLengthAsTheWinningCondition = (IMove validatedMove) =>
             {
                 var winningCondition = playingBoard.WinningCondition;
                 var playedMoves = moveRetriever;
 
                 foreach (var playedMove in playedMoves)
                 {
-                    if (!move.Equals(playedMove)
-                    && !move.Player.Equals(playedMove.Player)
-                    && Math.Abs(playedMove.Row - move.Row) < winningCondition
-                    && Math.Abs(playedMove.Column - move.Column) < winningCondition)
+                    if (!validatedMove.Equals(playedMove)
+                    && !validatedMove.Player.Equals(playedMove.Player)
+                    && Math.Abs(playedMove.Row - validatedMove.Row) < winningCondition
+                    && Math.Abs(playedMove.Column - validatedMove.Column) < winningCondition)
                     {
                         return true;
                     }
@@ -570,27 +530,19 @@
                 return false;
             };
 
-            if (isThereAnyOtherMoveFromOpponentInsideTheSquareWithLengthAsTheWinningCondition(move))
-            {
-                result.Add(new DefensiveMoveType());
-            }
-
-            return result;
+            return base.Validate(validatedMove, moveRetriever, playingBoard)
+                && isThereAnyOtherMoveFromOpponentInsideTheSquareWithLengthAsTheWinningCondition(validatedMove);
         }
-
-        protected class DefensiveMoveType : IDefensiveMoveType { }
     }
 
-    public class BlockForkMoveTypeCategorizer : DefensiveMoveTypeCategorizer
+    public class BlockForkMoveTypeValidator : DefensiveMoveTypeValidator
     {
-        public override IEnumerable<IMoveType> Categorize(IMove move, IMoveRetriever moveRetriever, IBoard playingBoard)
+        public override bool Validate(IMove validatedMove, IMoveRetriever moveRetriever, IBoard playingBoard)
         {
             if (!(playingBoard.WinningCondition - 2 > 0))
             {
                 throw new ArgumentException();
             }
-
-            var result = new List<IMoveType>(base.Categorize(move, moveRetriever, playingBoard));
 
             var winningCondition = playingBoard.WinningCondition;
             var numberOfRows = playingBoard.NumberOfRows;
@@ -619,8 +571,8 @@
                     CancellationToken cancellationToken) =>
                 {
                     var checkedTimes = 0;
-                    var currentCheckedMoveRowIndex = move.Row;
-                    var currentChecedkMoveColumnIndex = move.Column;
+                    var currentCheckedMoveRowIndex = validatedMove.Row;
+                    var currentChecedkMoveColumnIndex = validatedMove.Column;
                     IMove? currentCheckedMove = null;
 
                     while (true)
@@ -645,7 +597,7 @@
                         else
 
                         {
-                            if (move.Player.Equals(currentCheckedMove.Player))
+                            if (validatedMove.Player.Equals(currentCheckedMove.Player))
                             {
                                 whenFoundPlayerMove();
                             }
@@ -702,7 +654,7 @@
                     getNextBehindMoveColumnIndex,
                     () =>
                     {
-                        // that unplayed move is the next winning move.
+                        // that unplayed validatedMove is the next winning validatedMove.
                         lock (handleFoundLocker)
                         {
                             if (isUnplayedMoveIgnored)
@@ -789,27 +741,19 @@
 
             Task.WaitAll(checkVerticalLine, checkHorizontalLine, checkLeftDiagonal, checkRightDiagonal);
 
-            if (numberOfSatisfiedLineSegment == 2)
-            {
-                result.Add(new BlockForkMoveType());
-            }
-
-            return result;
+            return base.Validate(validatedMove, moveRetriever, playingBoard)
+                && numberOfSatisfiedLineSegment == 2;
         }
-
-        protected class BlockForkMoveType : IBlockForkMoveType { }
     }
 
-    public class BlockWinningMoveTypeCategorizer : DefensiveMoveTypeCategorizer
+    public class BlockWinningMoveTypeValidator : DefensiveMoveTypeValidator
     {
-        public override IEnumerable<IMoveType> Categorize(IMove move, IMoveRetriever moveRetriever, IBoard playingBoard)
+        public override bool Validate(IMove validatedMove, IMoveRetriever moveRetriever, IBoard playingBoard)
         {
             if (!(playingBoard.WinningCondition - 2 > 0))
             {
                 throw new ArgumentException();
             }
-
-            var result = new List<IMoveType>(base.Categorize(move, moveRetriever, playingBoard));
 
             var winningCondition = playingBoard.WinningCondition;
             var numberOfRows = playingBoard.NumberOfRows;
@@ -838,8 +782,8 @@
                     CancellationToken cancellationToken) =>
                 {
                     var checkedTimes = 0;
-                    var currentCheckedMoveRowIndex = move.Row;
-                    var currentChecedkMoveColumnIndex = move.Column;
+                    var currentCheckedMoveRowIndex = validatedMove.Row;
+                    var currentChecedkMoveColumnIndex = validatedMove.Column;
                     IMove? currentCheckedMove = null;
 
                     while (true)
@@ -864,7 +808,7 @@
                         else
 
                         {
-                            if (move.Player.Equals(currentCheckedMove.Player))
+                            if (validatedMove.Player.Equals(currentCheckedMove.Player))
                             {
                                 whenFoundPlayerMove();
                             }
@@ -1018,14 +962,8 @@
 
             Task.WaitAll(checkVerticalLine, checkHorizontalLine, checkLeftDiagonal, checkRightDiagonal);
 
-            if (numberOfSatisfiedLineSegment == 1)
-            {
-                result.Add(new BlockWinningMoveType());
-            }
-
-            return result;
+            return base.Validate(validatedMove, moveRetriever, playingBoard)
+                && numberOfSatisfiedLineSegment == 1;
         }
-
-        protected class BlockWinningMoveType : IBlockWinningMoveType { }
     }
 }
