@@ -1,14 +1,8 @@
 ﻿using Moq;
 using System.Collections;
-using System.Runtime.InteropServices;
 
 namespace ComputerPlayer
 {
-    public interface IMoveFacotry<TProduct>
-        where TProduct : IMove
-    {
-        public TProduct Produce(int row, int column, IPlayer player);
-    }
 
     public interface IPreviousMoveSpecifiableMove : IMove
     {
@@ -18,6 +12,16 @@ namespace ComputerPlayer
     public interface IPreviousMoveAccessibleMove : IMove
     {
         public IMove PreviousMove { get; }
+    }
+
+    public interface IPredictedPreviousMoveSpecifiableMove : IPreviousMoveSpecifiableMove
+    {
+
+    }
+
+    public interface IPredictedPreviousMoveAccessibleMove : IPreviousMoveAccessibleMove
+    {
+
     }
 
     public interface INextMovesPredictableMove : IMove
@@ -37,10 +41,10 @@ namespace ComputerPlayer
     }
 
     public interface ITreeRoot : ITreeComponent, INextMovesPredictableMove, INextMovesPredictedMove { }
-    public interface ITreeBranch : ITreeComponent, IPreviousMoveSpecifiableMove, IPreviousMoveAccessibleMove, INextMovesPredictableMove, INextMovesPredictedMove { }
-    public interface ITreeLeaf : ITreeComponent, IPreviousMoveAccessibleMove, IPreviousMoveSpecifiableMove { }
-    public interface ITreeFlower : ITreeComponent, IPreviousMoveSpecifiableMove, IPreviousMoveAccessibleMove, INextMovesPredictableMove, INextMovesPredictedMove { }
-    public interface ITreeFruit : ITreeComponent, IPreviousMoveAccessibleMove, IPreviousMoveSpecifiableMove { }
+    public interface ITreeBranch : ITreeComponent, IPredictedPreviousMoveSpecifiableMove, IPredictedPreviousMoveAccessibleMove, INextMovesPredictableMove, INextMovesPredictedMove { }
+    public interface ITreeLeaf : ITreeComponent, IPredictedPreviousMoveAccessibleMove, IPredictedPreviousMoveSpecifiableMove { }
+    public interface ITreeFlower : ITreeComponent, IPredictedPreviousMoveSpecifiableMove, IPredictedPreviousMoveAccessibleMove, INextMovesPredictableMove, INextMovesPredictedMove { }
+    public interface ITreeFruit : ITreeComponent, IPredictedPreviousMoveAccessibleMove, IPredictedPreviousMoveSpecifiableMove { }
 
     public interface ITree
     {
