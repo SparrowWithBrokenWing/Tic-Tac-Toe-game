@@ -20,16 +20,6 @@ namespace ComputerPlayer
         public ITurn this[int turnOrdinal] { get; }
     }
 
-    public interface IMatch
-    {
-        public IEnumerable<IPlayer> Players { get; }
-    }
-
-    public interface IMatchLog
-    {
-        public IMatch PlayingMatch { get; }
-    }
-
     public interface IMoveRetriever : IEnumerable<IMove>, IEnumerable
     {
         public IMove? Retrieve(int row, int column);

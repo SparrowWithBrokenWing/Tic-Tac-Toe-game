@@ -13,7 +13,7 @@
     public interface IEvaluatableMove<TValue> : IMove
         where TValue : IComparable<TValue>
     {
-        public TValue EvaluateValue { set; }
+        public TValue NoveValue { set; }
     }
 
     public interface IEvaluatedMove<TValue> : IMove
