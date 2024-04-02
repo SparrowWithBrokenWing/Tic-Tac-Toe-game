@@ -12,12 +12,13 @@ namespace ComputerPlayer.Analyzer
         public float EvaluateValue { get; }
     }
 
-    public interface IMoveEvaluator
+    public interface IMoveEvaluator<TMove>
+        where TMove : IMove
     {
-        public float Evaluate(IMove move);
+        public float Evaluate(TMove move);
     }
 
-    public class MoveTypeEvaluator : IMoveEvaluator
+    public class MoveTypeEvaluator : IMoveEvaluator<ICategorizedMove> 
     {
         public MoveTypeEvaluator()
         {
@@ -29,16 +30,11 @@ namespace ComputerPlayer.Analyzer
         public void Register<TMoveType>(float value)
             where TMoveType : IMoveType
         {
-            MoveTypeValueDictionary.Add(typeof(IMoveType), value);
+            MoveTypeValueDictionary.Add(typeof(TMoveType), value);
         }
 
-        public float Evaluate(IMove move)
+        public float Evaluate(ICategorizedMove categorizedMove)
         {
-            if (move is not ICategorizedMove categorizedMove)
-            {
-                throw new ArgumentException();
-            }
-
             float totalValue = default(float);
             HashSet<Type> usedTypes = new HashSet<Type>();
 
@@ -60,86 +56,143 @@ namespace ComputerPlayer.Analyzer
         }
     }
 
-    public class PredictedNextMoveValueEvaluator : IMoveEvaluator
+    public class PredictedNextMovesValueEvaluator : IMoveEvaluator<INextMovesPredictedMove> 
     {
-        private bool _hasBeenSetup = false;
-        protected IMoveEvaluator? MoveEvaluator { get; private set; }
-
-        public void Setup(IMoveEvaluator moveEvaluator)
+        public void Setup(IMoveEvaluator<IMove> realMoveEvaluator)
         {
-            if (_hasBeenSetup)
-            {
-                throw new NotImplementedException();
-            }
-            _hasBeenSetup = true;
-            MoveEvaluator = moveEvaluator;
+            MoveEvaluator = realMoveEvaluator;
         }
 
-        public float Evaluate(IMove move)
+        protected IMoveEvaluator<IMove>? MoveEvaluator { get; private set; }
+
+        public float Evaluate(INextMovesPredictedMove nextMovesPredictedMove)
         {
             if (MoveEvaluator is null)
             {
                 throw new NotImplementedException();
             }
-            if (move is not INextMovesPredictedMove)
-            {
-                throw new ArgumentException();
-            }
-            var nextMovesPredictedMove = (INextMovesPredictedMove)move;
             var numberOfPredictedNextMoves = nextMovesPredictedMove.PredictedNextMoves.Count();
             float result = 0;
             foreach (var predictedNextMove in nextMovesPredictedMove.PredictedNextMoves)
             {
-                result += MoveEvaluator.Evaluate(predictedNextMove) * 1 / numberOfPredictedNextMoves;
+                if (predictedNextMove is INextMovesPredictedMove sub)
+                {
+                    result += Evaluate(sub);
+                }
+                else
+                {
+                    result += MoveEvaluator.Evaluate(predictedNextMove) * 1 / numberOfPredictedNextMoves;
+                }
             }
             result /= numberOfPredictedNextMoves;
             return result;
         }
     }
 
-    public class ExchangeRateEvaluator : IMoveEvaluator
+    public class CompositeEvaluator<TMove> : IMoveEvaluator<TMove>
+        where TMove : IMove
     {
-        public ExchangeRateEvaluator(IEnumerable<Tuple<float, IMoveEvaluator>> exchangeRates)
+        public CompositeEvaluator(IEnumerable<IMoveEvaluator<TMove>> components)
         {
-            ExchangeRates = exchangeRates;
+            MoveEvaluators = new LinkedList<IMoveEvaluator<TMove>>(components);
         }
 
-        protected IEnumerable<Tuple<float, IMoveEvaluator>> ExchangeRates { get; private set; }
+        protected LinkedList<IMoveEvaluator<TMove>> MoveEvaluators { get; private set; }
 
-        public float Evaluate(IMove move)
+        public void Add(IMoveEvaluator<TMove> evaluator)
         {
-            float sum = 0;
-            foreach (var evaluator in ExchangeRates)
+            MoveEvaluators.AddLast(evaluator);
+        }
+
+        public float Evaluate(TMove move)
+        {
+            float result = 0;
+            foreach (var evaluator in MoveEvaluators)
             {
-                sum += evaluator.Item1 * evaluator.Item2.Evaluate(move);
+                result += evaluator.Evaluate(move);
             }
-            return sum;
+            return result;
         }
     }
 
-    public class ConditionEvaluator : IMoveEvaluator
+    public class BasicAdapterEvaluator<TMove> : IMoveEvaluator<IMove>
+        where TMove : IMove
     {
-        // need better name for property and constructor parameter
-        public ConditionEvaluator(IEnumerable<Tuple<Func<IMove, bool>, IMoveEvaluator>> tuples)
+        public BasicAdapterEvaluator(IMoveEvaluator<TMove> adaptedMoveEvaluator)
         {
-            Tuples = tuples;
+            AdapterMoveEvaluator = adaptedMoveEvaluator;
         }
 
-        protected IEnumerable<Tuple<Func<IMove, bool>, IMoveEvaluator>> Tuples { get; private set; }
+        protected IMoveEvaluator<TMove> AdapterMoveEvaluator { get; private set; }
 
         public float Evaluate(IMove move)
         {
-            float sum = 0;
-            foreach (var tuple in Tuples)
+            if (move is not TMove)
             {
-                var condition = tuple.Item1;
-                if (condition(move))
-                {
-                    var evaluator = tuple.Item2;
-                    sum += evaluator.Evaluate(move);
-                }
+                return 0;
             }
-            return sum;
+            return AdapterMoveEvaluator.Evaluate((TMove)move);
+        }
+    }
+
+    public class RateTransformerEvaluator<TMove> : IMoveEvaluator<TMove> 
+        where TMove : IMove
+    {
+        public RateTransformerEvaluator(float rate, IMoveEvaluator<TMove> moveEvaluator)
+        {
+            Rate = rate;
+            MoveEvauator = moveEvaluator;
+        }
+
+        protected IMoveEvaluator<TMove> MoveEvauator { get; private set; }
+        protected float Rate { get; private set; }
+
+        public float Evaluate(TMove move)
+        {
+            return Rate * MoveEvauator.Evaluate(move);
+        }
+    }
+
+    public class ConditionAdapterEvaluator<TMove> : IMoveEvaluator<TMove> 
+        where TMove : IMove
+    {
+        public ConditionAdapterEvaluator(Func<TMove, bool> evaluateCondition, IMoveEvaluator<TMove> moveEvaluator)
+        {
+            EvaluateCondition = evaluateCondition;
+            MoveEvaluator = moveEvaluator;
+        }
+
+        protected Func<TMove, bool> EvaluateCondition { get; private set; }
+        protected IMoveEvaluator<TMove> MoveEvaluator { get; private set; }
+
+        public float Evaluate(TMove move)
+        {
+            return EvaluateCondition(move) ? MoveEvaluator.Evaluate(move) : 0;
+        }
+    }
+
+    public class ActBaseOnEvaluatingResultEvaluator<TMove> : IMoveEvaluator<TMove> 
+        where TMove : IMove
+    {
+        public ActBaseOnEvaluatingResultEvaluator(IMoveEvaluator<TMove> moveEvaluator, Func<float, bool> actCondition, Action act)
+        {
+            MoveEvaluator = moveEvaluator;
+            ActCondition = actCondition;
+            Act = act;
+        }
+
+        protected IMoveEvaluator<TMove> MoveEvaluator { get; private set; }
+        protected Func<float, bool> ActCondition { get; private set; }
+        protected Action Act { get; private set; }
+
+        public float Evaluate(TMove move)
+        {
+            var result = MoveEvaluator.Evaluate(move);
+            if (ActCondition(result))
+            {
+                Act();
+            }
+            return result;
         }
     }
 

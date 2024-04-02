@@ -27,20 +27,20 @@
     {
 
     }
-    public interface ICategorizer
+    public interface IMoveCategorizer
     {
         //public IEnumerable<IMoveType> Categorize(IMove move, IMoveTracker moveRetriever);
         public IEnumerable<IMoveType> Categorize(IMove move, IMoveRetriever moveRetriever, IBoard playingBoard);
     }
 
-    public class CompositeCategorizer : ICategorizer
+    public class CompositeCategorizer : IMoveCategorizer
     {
-        public CompositeCategorizer(IEnumerable<ICategorizer> categorizers)
+        public CompositeCategorizer(IEnumerable<IMoveCategorizer> categorizers)
         {
             _Categorizers = categorizers;
         }
 
-        protected IEnumerable<ICategorizer> _Categorizers { get; private set; }
+        protected IEnumerable<IMoveCategorizer> _Categorizers { get; private set; }
 
         public IEnumerable<IMoveType> Categorize(IMove move, IMoveRetriever moveRetriever, IBoard playingBoard)
         {
@@ -57,7 +57,7 @@
         }
     }
 
-    public class PossibleMoveTypeCategorizer : ICategorizer
+    public class PossibleMoveTypeCategorizer : IMoveCategorizer
     {
         public virtual IEnumerable<IMoveType> Categorize(IMove move, IMoveRetriever moveRetriever, IBoard playingBoard)
         {
@@ -325,6 +325,10 @@
             {
                 lock (handleFinishedCheckTaskLocker)
                 {
+                    if (checkTask.IsCanceled)
+                    {
+                        return Task.FromResult(false);
+                    }
                     if (checkTask.Result)
                     {
                         numberOfSatisfiedLineSegment++;
@@ -366,7 +370,17 @@
                     cancellationToken)
                 .ContinueWith(handleFinishedCheckTask);
 
-            Task.WaitAll(checkVerticalLine, checkHorizontalLine, checkLeftDiagonal, checkRightDiagonal);
+            try
+            {
+                Task.WaitAll(checkVerticalLine, checkHorizontalLine, checkLeftDiagonal, checkRightDiagonal);
+            }
+            catch(AggregateException aggregateException)
+            {
+                if (!(aggregateException.InnerException is TaskCanceledException))
+                {
+                    throw;
+                }
+            }
 
             if (numberOfSatisfiedLineSegment >= 2)
             {
@@ -520,6 +534,10 @@
             {
                 lock (handleFinishedCheckTaskLocker)
                 {
+                    if (checkTask.IsCanceled)
+                    {
+                        return Task.FromResult(false);
+                    }
                     if (checkTask.Result)
                     {
                         numberOfSatisfiedLineSegment++;
@@ -774,6 +792,10 @@
             {
                 lock (handleFinishedCheckTaskLocker)
                 {
+                    if (checkTask.IsCanceled)
+                    {
+                        return Task.FromResult(false);
+                    }
                     if (checkTask.Result)
                     {
                         numberOfSatisfiedLineSegment++;
@@ -1003,6 +1025,10 @@
             {
                 lock (handleFinishedCheckTaskLocker)
                 {
+                    if (checkTask.IsCanceled)
+                    {
+                        return Task.FromResult(false);
+                    }
                     if (checkTask.Result)
                     {
                         numberOfSatisfiedLineSegment++;

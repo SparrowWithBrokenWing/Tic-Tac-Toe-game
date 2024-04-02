@@ -13,8 +13,9 @@
             Tuple<IPlayer, IPlayer> players,
             IMoveCategorizer moveCategorizer,
             IMoveRetriever playedMoveRetriever,
+            IBoard board,
             AbstractTree<TTreeComponent> tree,
-            IMoveEvaluator moveEvaluator)
+            IMoveEvaluator<IMove> moveEvaluator)
         {
             if (!(analyzedPlayer.Equals(players.Item1) || analyzedPlayer.Equals(players.Item2)))
             {
@@ -24,6 +25,7 @@
             _players = players;
             MoveCategrozier = moveCategorizer;
             PlayedMoveRetriever = playedMoveRetriever;
+            Board = board;
             PredictionTree = tree;
             MoveEvaluator = moveEvaluator;
         }
@@ -34,11 +36,13 @@
 
         // for categorizing move
         protected IMoveCategorizer MoveCategrozier { get; private set; }
+        protected IMoveRetriever PlayedMoveRetriever { get; private set; }
+        protected IBoard Board { get; private set; }
 
         // for calculating move value
-        protected IMoveRetriever PlayedMoveRetriever { get; private set; }
         protected ITree PredictionTree { get; private set; }
-        protected IMoveEvaluator MoveEvaluator { get; private set; }
+        protected IMoveEvaluator<IMove> MoveEvaluator { get; private set; }
+        
 
         public abstract Tuple<int, int> Analyze();
     }
@@ -55,12 +59,14 @@
             Tuple<IPlayer, IPlayer> players,
             IMoveCategorizer moveCategorizer,
             IMoveRetriever playedMoveRetriever,
+            IBoard board,
             AbstractTree<IAnalyzableMove> tree,
-            IMoveEvaluator moveEvaluator)
-            : base(analyzedPlayer, players, moveCategorizer, playedMoveRetriever, tree, moveEvaluator)
+            IMoveEvaluator<IMove> moveEvaluator)
+            : base(analyzedPlayer, players, moveCategorizer, playedMoveRetriever, board, tree, moveEvaluator)
         {
         }
 
+        // need to prune and cutting tree. but when? no, the tree should be pruned or cutting in main program
         public override Tuple<int, int> Analyze()
         {
             // categorize move type of all predicted moves
@@ -69,7 +75,7 @@
             {
                 if (move is ICategorizableMove categorizableMove)
                 {
-                    base.MoveCategrozier.Categorize(categorizableMove);
+                    base.MoveCategrozier.Categorize(categorizableMove, PlayedMoveRetriever, Board);
                     if (categorizableMove is INextMovesPredictedMove nextMovesPredictedMove)
                     {
                         foreach (var predictedNextMove in nextMovesPredictedMove.PredictedNextMoves)

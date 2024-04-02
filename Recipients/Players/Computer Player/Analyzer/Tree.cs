@@ -3,6 +3,7 @@ using System.Collections;
 
 namespace ComputerPlayer.Analyzer
 {
+
     public interface IPreviousMoveSpecifiableMove : IMove
     {
         public IMove PreviousMove { set; }
@@ -46,7 +47,7 @@ namespace ComputerPlayer.Analyzer
     public abstract partial class AbstractTree<TFactoryProduct> : ITree
         where TFactoryProduct : ITreeComponent
     {
-        public AbstractTree(Tuple<IPlayer, IPlayer> players, IMoveFacotry<ITreeComponent> treeComponentFactory, IBoard playingBoard, IMoveRetriever playedMoveRetriever)
+        public AbstractTree(Tuple<IPlayer, IPlayer> players, IMoveFacotry<TFactoryProduct> treeComponentFactory, IBoard playingBoard, IMoveRetriever playedMoveRetriever)
         {
             _players = players;
             TreeComponentFactory = treeComponentFactory;
@@ -68,7 +69,7 @@ namespace ComputerPlayer.Analyzer
         public INextMovesPredictedMove Root => ActualRoot;
 
         protected ITreeRoot ActualRoot { get; set; }
-        protected IMoveFacotry<ITreeComponent> TreeComponentFactory { get; private set; }
+        protected IMoveFacotry<TFactoryProduct> TreeComponentFactory { get; private set; }
         protected IBoard PlayingBoard { get; private set; }
 
         private Tuple<IPlayer, IPlayer> _players;
@@ -95,8 +96,8 @@ namespace ComputerPlayer.Analyzer
 
             bool newPlayedMoveHasBeenPredicted = ActualRoot.PredictedNextMoves.Any((IMove checkedPredictedMove) => checkedPredictedMove.Equals(newPlayedMove));
 
-            var opponent = GetNextPlayablePlayer(newPlayedMove);
-            var factoryProduct = TreeComponentFactory.Produce(newPlayedMove.Row, newPlayedMove.Column, opponent);
+            var currentPlayablePlayer = GetNextPlayablePlayer(newPlayedMove);
+            var factoryProduct = TreeComponentFactory.Produce(newPlayedMove.Row, newPlayedMove.Column, currentPlayablePlayer);
             if (factoryProduct is not ITreeRoot)
             {
                 throw new NotImplementedException();
@@ -120,8 +121,8 @@ namespace ComputerPlayer.Analyzer
 
                 // make new played move become new root
                 ActualRoot = newRoot;
-                // regenerate tree from new actual root
 
+                // regenerate tree from new actual root
                 Generate(ActualRoot, GetMoveRetriever());
             }
             else
@@ -374,9 +375,10 @@ namespace ComputerPlayer.Analyzer
         }
     }
 
-    public class UnoptimizedTree1 : AbstractTree<ITreeComponent>
+    public class UnoptimizedTree1<TTreeComponent> : AbstractTree<TTreeComponent>
+        where TTreeComponent : ITreeComponent
     {
-        public UnoptimizedTree1(Tuple<IPlayer, IPlayer> players, IMoveFacotry<ITreeComponent> treeComponentFactory, IBoard playingBoard, IMoveRetriever playedMoveRetriever) : base(players, treeComponentFactory, playingBoard, playedMoveRetriever)
+        public UnoptimizedTree1(Tuple<IPlayer, IPlayer> players, IMoveFacotry<TTreeComponent> treeComponentFactory, IBoard playingBoard, IMoveRetriever playedMoveRetriever) : base(players, treeComponentFactory, playingBoard, playedMoveRetriever)
         {
         }
 
