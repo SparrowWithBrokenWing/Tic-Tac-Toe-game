@@ -90,19 +90,19 @@
             };
             if (categorize is not null)
             {
-                categorize(base.PredictionTree.Root);
+                categorize(base.PredictionTree.LastPlayedMove);
             }
 
             // get the move with best value from all player predicted moves
             IPlayer analyzedPlayer = AnalyzedPlayer;
-            if (!base.PredictionTree.Root.Player.Equals(analyzedPlayer))
+            if (!base.PredictionTree.LastPlayedMove.Player.Equals(analyzedPlayer))
             {
                 throw new NotImplementedException();
             }
             var rowOfBestLocation = -1;
             var columnOfBestLocation = -1;
             float maxValue = 0;
-            foreach (var predictedNextMove in base.PredictionTree.Root.PredictedNextMoves)
+            foreach (var predictedNextMove in base.PredictionTree.LastPlayedMove.PredictedNextMoves)
             {
                 var valueOfPredictedMove = base.MoveEvaluator.Evaluate(predictedNextMove);
                 if (maxValue < valueOfPredictedMove)
