@@ -70,6 +70,7 @@ namespace ComputerPlayer.Analyzer
             PlayingBoard = playingBoard;
             _playedMoveLog = new PlayedMoveLog(playingBoard, playedMoveRetriever);
             _predictedPreviousMoveRetriever = new PredictedPreviousMoveRetriever(_playedMoveLog);
+            MoveCategorizer = moveCategorizer;
 
             TreeRootFactory = treeRootFactory;
             TreeBranchFactory = treeBranchFactory;
@@ -78,11 +79,12 @@ namespace ComputerPlayer.Analyzer
             TreeFruitFactory = treeFruitFactory;
 
             Root = TreeRootFactory.Produce(lastPlayedMove.Row, lastPlayedMove.Column, lastPlayedMove.Player);
-            Growth(Root, GetMoveRetriever());
+            Growth(Root);
         }
 
         // currently I find one of predicted move as new root, but should it be? everytime tree need to be growthed, the old design require to make new instance of root, setup its state become the state of nonroot node also remove reference to the old one, but should it work like that? it is more efficient if the old branch become root, or should it be no root at all? No. Because the tree represent as state of game, if ... No, even in the case where root is removed or the root now will only be instance of IMove, I think I still missing the way to retrieve played move. analyzer should work on tree, bound with tree. Then should tree hold reference to the played moves? should analyzer get it as played moves retriever?
         public INextMovesPredictedMove LastPlayedMove => Root;
+        public IMoveRetriever PlayedMoves => GetMoveRetriever();
 
         protected ITreeRoot Root { get; set; }
         protected IMoveFacotry<TTreeRootFactoryProduct> TreeRootFactory { get; private set; }
@@ -91,8 +93,8 @@ namespace ComputerPlayer.Analyzer
         protected IMoveFacotry<TTreeFlowerFactoryProduct> TreeFlowerFactory { get; private set; }
         protected IMoveFacotry<TTreeFruitFactoryProduct> TreeFruitFactory { get; private set; }
 
-        public IMoveRetriever PlayedMoves => GetMoveRetriever();
         protected IBoard PlayingBoard { get; private set; }
+        protected IMoveCategorizer MoveCategorizer { get; private set; }
 
         private Tuple<IPlayer, IPlayer> _players;
 
