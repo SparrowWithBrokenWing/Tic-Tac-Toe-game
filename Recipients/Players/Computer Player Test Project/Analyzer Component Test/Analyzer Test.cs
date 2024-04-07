@@ -14,32 +14,17 @@ namespace Computer_Player_Test_Project.Analyzer_Component_Test
                 var mockOfPlayer = new Mock<IPlayer>();
                 var mockOfOpponent = new Mock<IPlayer>();
                 var players = new Tuple<IPlayer, IPlayer>(mockOfPlayer.Object, mockOfOpponent.Object);
-                var getNewMockMove = (int row, int column, IPlayer player) =>
-                {
-                    var mockOfMove = new Mock<IMove>();
-                    mockOfMove.Setup((move) => move.Row).Returns(row);
-                    mockOfMove.Setup((move) => move.Column).Returns(column);
-                    mockOfMove.Setup((move) => move.Player).Returns(player);
-                    return mockOfMove.Object;
-                };
+                var player = players.Item1;
+                var opponent = players.Item2;
+                mockOfPlayer.Setup((player) => player.Equals(It.IsAny<IPlayer>())).Returns<IPlayer>((otherPlayer) => ReferenceEquals(otherPlayer, player));
+                mockOfOpponent.Setup((player) => player.Equals(It.IsAny<IPlayer>())).Returns<IPlayer>((otherPlayer) => ReferenceEquals(otherPlayer, player));
+
                 var mockOfBoard = new Mock<IBoard>();
                 mockOfBoard.Setup((board) => board.NumberOfRows).Returns(3);
                 mockOfBoard.Setup((board) => board.NumberOfColumns).Returns(3);
                 mockOfBoard.Setup((board) => board.WinningCondition).Returns(3);
-                var getNewCategorizedMockMove = (int row, int column, IPlayer player) =>
-                {
-                    var mock = new Mock<IAnalyzableMove>();
-                    mock.Setup((move) => move.Row).Returns(row);
-                    mock.Setup((move) => move.Column).Returns(column);
-                    mock.Setup((move) => move.Player).Returns(player);
-                    var categories = new List<IMoveType>();
-                    mock.Setup((move) => ((ICategorizableMove)move).Categories).Returns(categories);
-                    mock.Setup((move) => ((ICategorizedMove)move).Categories).Returns(categories);
-                    float evaluateValue = 0;
-                    mock.SetupSet((move) => ((IEvaluableMove)move).EvaluateValue = It.IsAny<float>()).Callback<float>((newValue) => evaluateValue = newValue);
-                    mock.Setup((move) => ((IEvaluatedMove)move).EvaluateValue).Returns(evaluateValue);
-                    return mock.Object;
-                };
+                var board = mockOfBoard.Object;
+
                 var moveCategorizer = new CompositeCategorizer(new IMoveCategorizer[]
                 {
                     new OffensiveMoveTypeCategorizer(),
@@ -50,28 +35,28 @@ namespace Computer_Player_Test_Project.Analyzer_Component_Test
                     new BlockWinningMoveTypeCategorizer()
                 });
 
-                var tree = new UnoptimizedTree1<IAnalyzableMove>(players, );
                 var mockOfMoveRetriever = new Mock<IMoveRetriever>();
+                var getNewMockMove = (int row, int column, IPlayer player) =>
+                {
+                    var mockOfMove = new Mock<IMove>();
+                    mockOfMove.Setup((move) => move.Row).Returns(row);
+                    mockOfMove.Setup((move) => move.Column).Returns(column);
+                    mockOfMove.Setup((move) => move.Player).Returns(player);
+                    return mockOfMove.Object;
+                };
                 var playedMoveList = new Dictionary<(int, int), IMove>
                 {
                     [(1, 1)] = getNewMockMove(1, 1, mockOfPlayer.Object),
                     [(2, 1)] = getNewMockMove(2, 1, mockOfOpponent.Object)
-                    //[(0, 1)] = getNewMockMove(1, 1, mockOfPlayer.Object),
-                    //[(2, 1)] = getNewMockMove(1, 1, mockOfOpponent.Object)
                 };
-                //mockOfMoveRetriever
-                //    .Setup((moveRetriever) => moveRetriever.Retrieve(It.IsAny<int>(), It.IsAny<int>()))
-                //    .Returns<int, int>((row, column) => playedMoveList[(row, column)]);
-                //mockOfMoveRetriever
-                //    .Setup((moveRetriever) => moveRetriever.Last())
-                //    .Returns(playedMoveList.Last().Value);
+                mockOfMoveRetriever
+                    .Setup((moveRetreiver) => moveRetreiver.Retrieve(It.IsAny<int>(), It.IsAny<int>()))
+                    .Returns<int, int>((row, column) => playedMoveList[new(row, column)]);
                 mockOfMoveRetriever
                     .Setup((moveRetriever) => moveRetriever.GetEnumerator())
                     .Returns(playedMoveList.Values.GetEnumerator());
                 var playedMoveRetriever = mockOfMoveRetriever.Object;
 
-
-                var lastPlayedMove = playedMoveList.Last().Value;
                 var basicMoveValueEvaluator = new MoveTypeEvaluator();
                 basicMoveValueEvaluator.Register<IOffensiveMoveType>(1);
                 basicMoveValueEvaluator.Register<IForkMoveType>((float)2.25);
@@ -79,29 +64,141 @@ namespace Computer_Player_Test_Project.Analyzer_Component_Test
                 basicMoveValueEvaluator.Register<IDefensiveMoveType>(1);
                 basicMoveValueEvaluator.Register<IBlockForkMoveType>(2);
                 basicMoveValueEvaluator.Register<IBlockWinningMoveType>(3);
-                var predictedNextMoveValueEvaluator = new PredictedNextMovesValueEvaluator();
-                var temp1 = new CompositeEvaluator<IMove>(new IMoveEvaluator<IMove>[]
-                {
-                    new BasicAdapterEvaluator<INextMovesPredictedMove>(new RateTransformerEvaluator<INextMovesPredictedMove>((float).35, predictedNextMoveValueEvaluator)),
-                    new BasicAdapterEvaluator<ICategorizedMove>(new RateTransformerEvaluator<ICategorizedMove>((float).65, basicMoveValueEvaluator))
-                });
-                var temp = new CompositeEvaluator<IMove>(new IMoveEvaluator<IMove>[]
-                {
-                    new CompositeEvaluator<IMove>(new IMoveEvaluator<IMove>[]
+
+                var lastPlayedMove = playedMoveList.Last().Value;
+
+                var mockOfTreeBranchFactory = new Mock<IMoveFacotry<IAnalyzableTreeBranch>>();
+                mockOfTreeBranchFactory
+                    .Setup((factory) => factory.Produce(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<IPlayer>()))
+                    .Returns<int, int, IPlayer>((row, column, player) =>
                     {
-                        new ConditionAdapterEvaluator<IMove>((move)=>move.Player.Equals(lastPlayedMove.Player), new RateTransformerEvaluator<IMove>((float)1, temp1)),
-                        new ConditionAdapterEvaluator<IMove>((move)=>!move.Player.Equals(lastPlayedMove.Player), new RateTransformerEvaluator<IMove>((float)-1, temp1))
-                    })
-                });
-                predictedNextMoveValueEvaluator.Setup(temp);
+                        var mockOfAnalyzableTreeBranch = new Mock<IAnalyzableTreeBranch>();
+                        mockOfAnalyzableTreeBranch.Setup((move) => move.Row).Returns(row);
+                        mockOfAnalyzableTreeBranch.Setup((move) => move.Column).Returns(column);
+                        mockOfAnalyzableTreeBranch.Setup((move) => move.Player).Returns(player);
+
+                        IMove? previousMove = null;
+                        mockOfAnalyzableTreeBranch.As<IPreviousMoveAccessibleMove>().Setup((move) => move.PreviousMove).Returns(previousMove is null ? throw new NotImplementedException() : previousMove);
+                        mockOfAnalyzableTreeBranch.As<IPreviousMoveSpecifiableMove>().SetupSet((move) => move.PreviousMove = It.IsAny<IMove>()).Callback<IMove>((move) => previousMove = move);
+
+                        List<IMove> nextMoves = new List<IMove>();
+                        mockOfAnalyzableTreeBranch.Setup((move) => move.PredictableNextMoves).Returns(nextMoves);
+                        mockOfAnalyzableTreeBranch.Setup((move) => move.PredictedNextMoves).Returns(nextMoves);
+
+                        uint componentHeight = 0;
+                        mockOfAnalyzableTreeBranch.Setup((move) => move.ComponentHeight).Returns(componentHeight);
+                        mockOfAnalyzableTreeBranch.SetupSet((move) => move.ComponentHeight = It.IsAny<uint>()).Callback<uint>((value) => componentHeight = value);
+
+                        List<IMoveType> moveTypes = new List<IMoveType>();
+                        mockOfAnalyzableTreeBranch.As<ICategorizableMove>().Setup((move) => move.Categories).Returns(moveTypes);
+                        mockOfAnalyzableTreeBranch.As<ICategorizedMove>().Setup((move) => move.Categories).Returns(moveTypes);
+
+                        return mockOfAnalyzableTreeBranch.Object;
+                    });
+                var mockOfTreeLeafFactory = new Mock<IMoveFacotry<IAnalyzableTreeLeaf>>();
+                mockOfTreeLeafFactory
+                    .Setup((factory) => factory.Produce(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<IPlayer>()))
+                    .Returns<int, int, IPlayer>((row, column, player) =>
+                    {
+                        var mockOfAnalyzableTreeLeaf = new Mock<IAnalyzableTreeLeaf>();
+                        mockOfAnalyzableTreeLeaf.Setup((move) => move.Row).Returns(row);
+                        mockOfAnalyzableTreeLeaf.Setup((move) => move.Column).Returns(column);
+                        mockOfAnalyzableTreeLeaf.Setup((move) => move.Player).Returns(player);
+
+                        IMove? previousMove = null;
+                        mockOfAnalyzableTreeLeaf.As<IPreviousMoveAccessibleMove>().Setup((move) => move.PreviousMove).Returns(previousMove is null ? throw new NotImplementedException() : previousMove);
+                        mockOfAnalyzableTreeLeaf.As<IPreviousMoveSpecifiableMove>().SetupSet((move) => move.PreviousMove = It.IsAny<IMove>()).Callback<IMove>((move) => previousMove = move);
+
+                        uint componentHeight = 0;
+                        mockOfAnalyzableTreeLeaf.Setup((move) => move.ComponentHeight).Returns(componentHeight);
+                        mockOfAnalyzableTreeLeaf.SetupSet((move) => move.ComponentHeight = It.IsAny<uint>()).Callback<uint>((value) => componentHeight = value);
+
+                        List<IMoveType> moveTypes = new List<IMoveType>();
+                        mockOfAnalyzableTreeLeaf.As<ICategorizableMove>().Setup((move) => move.Categories).Returns(moveTypes);
+                        mockOfAnalyzableTreeLeaf.As<ICategorizedMove>().Setup((move) => move.Categories).Returns(moveTypes);
+
+                        return mockOfAnalyzableTreeLeaf.Object;
+                    });
+                var mockOfTreeFlowerFactory = new Mock<IMoveFacotry<IAnalyzableTreeFlower>>();
+                mockOfTreeFlowerFactory
+                    .Setup((factory) => factory.Produce(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<IPlayer>()))
+                    .Returns<int, int, IPlayer>((row, column, player) =>
+                    {
+                        var mockOfAnalyzableTreeFlower = new Mock<IAnalyzableTreeFlower>();
+                        mockOfAnalyzableTreeFlower.Setup((move) => move.Row).Returns(row);
+                        mockOfAnalyzableTreeFlower.Setup((move) => move.Column).Returns(column);
+                        mockOfAnalyzableTreeFlower.Setup((move) => move.Player).Returns(player);
+
+                        IMove? previousMove = null;
+                        mockOfAnalyzableTreeFlower.As<IPreviousMoveAccessibleMove>().Setup((move) => move.PreviousMove).Returns(previousMove is null ? throw new NotImplementedException() : previousMove);
+                        mockOfAnalyzableTreeFlower.As<IPreviousMoveSpecifiableMove>().SetupSet((move) => move.PreviousMove = It.IsAny<IMove>()).Callback<IMove>((move) => previousMove = move);
+
+                        List<IMove> nextMoves = new List<IMove>();
+                        mockOfAnalyzableTreeFlower.Setup((move) => move.PredictableNextMoves).Returns(nextMoves);
+                        mockOfAnalyzableTreeFlower.Setup((move) => move.PredictedNextMoves).Returns(nextMoves);
+
+                        uint componentHeight = 0;
+                        mockOfAnalyzableTreeFlower.Setup((move) => move.ComponentHeight).Returns(componentHeight);
+                        mockOfAnalyzableTreeFlower.SetupSet((move) => move.ComponentHeight = It.IsAny<uint>()).Callback<uint>((value) => componentHeight = value);
+
+                        List<IMoveType> moveTypes = new List<IMoveType>();
+                        mockOfAnalyzableTreeFlower.As<ICategorizableMove>().Setup((move) => move.Categories).Returns(moveTypes);
+                        mockOfAnalyzableTreeFlower.As<ICategorizedMove>().Setup((move) => move.Categories).Returns(moveTypes);
+
+                        return mockOfAnalyzableTreeFlower.Object;
+                    });
+                var mockOfTreeFruitFactory = new Mock<IMoveFacotry<IAnalyzableTreeFruit>>();
+                mockOfTreeFruitFactory
+                    .Setup((factory) => factory.Produce(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<IPlayer>()))
+                    .Returns<int, int, IPlayer>((row, column, player) =>
+                    {
+                        var mockOfAnalyzableTreeFruit = new Mock<IAnalyzableTreeFruit>();
+                        mockOfAnalyzableTreeFruit.Setup((move) => move.Row).Returns(row);
+                        mockOfAnalyzableTreeFruit.Setup((move) => move.Column).Returns(column);
+                        mockOfAnalyzableTreeFruit.Setup((move) => move.Player).Returns(player);
+
+                        IMove? previousMove = null;
+                        mockOfAnalyzableTreeFruit.As<IPreviousMoveAccessibleMove>().Setup((move) => move.PreviousMove).Returns(previousMove is null ? throw new NotImplementedException() : previousMove);
+                        mockOfAnalyzableTreeFruit.As<IPreviousMoveSpecifiableMove>().SetupSet((move) => move.PreviousMove = It.IsAny<IMove>()).Callback<IMove>((move) => previousMove = move);
+
+                        uint componentHeight = 0;
+                        mockOfAnalyzableTreeFruit.Setup((move) => move.ComponentHeight).Returns(componentHeight);
+                        mockOfAnalyzableTreeFruit.SetupSet((move) => move.ComponentHeight = It.IsAny<uint>()).Callback<uint>((value) => componentHeight = value);
+
+                        List<IMoveType> moveTypes = new List<IMoveType>();
+                        mockOfAnalyzableTreeFruit.As<ICategorizableMove>().Setup((move) => move.Categories).Returns(moveTypes);
+                        mockOfAnalyzableTreeFruit.As<ICategorizedMove>().Setup((move) => move.Categories).Returns(moveTypes);
+
+                        return mockOfAnalyzableTreeFruit.Object;
+                    });
+                var treeBranchFactory = mockOfTreeBranchFactory.Object;
+                var treeLeafFactory = mockOfTreeLeafFactory.Object;
+                var treeFlowerFactory = mockOfTreeFlowerFactory.Object;
+                var treeFruitFactory = mockOfTreeFruitFactory.Object;
+
+                var tree = new TreeImplement1
+                    <IAnalyzableTreeComponent, 
+                    IAnalyzableTreeBranch, 
+                    IAnalyzableTreeLeaf, 
+                    IAnalyzableTreeFlower, 
+                    IAnalyzableTreeFruit>
+                    (players, board, lastPlayedMove, playedMoveRetriever, moveCategorizer, treeBranchFactory, treeLeafFactory, treeFlowerFactory, treeFruitFactory);
+                
                 return new object[][]{
                     new object[]
                     {
-                        new UnoptimizedAnalyzer(mockOfPlayer.Object, players, moveCategorizer, playedMoveRetriever, mockOfBoard.Object, tree, new BasicAdapterEvaluator<INextMovesPredictedMove>(predictedNextMoveValueEvaluator)),
+                        new AnalyzerImplement1
+                            (player, players, board, tree, new BasicAdapterEvaluator<ICategorizedMove>(basicMoveValueEvaluator)),
                         new Tuple<int, int>(0, 2)
                     }
                 };
             }
+        }
+
+        [TestMethod]
+        public void Try()
+        {
+            var testData = TestData1;
         }
 
         [TestMethod]

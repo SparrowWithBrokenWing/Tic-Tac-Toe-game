@@ -31,186 +31,133 @@ namespace ComputerPlayer.Analyzer
     }
 
     // I understand that there is a case where tree or game reach to the state so that root will be unpredictable. Maybe that root is a winning move. But the tree root in general case is predictable. should I change the design here?
-    public interface ITreeRoot : ITreeComponent, INextMovesPredictableMove, INextMovesPredictedMove { }
-    public interface ITreeBranch : ITreeComponent, IPreviousMoveSpecifiableMove, IPreviousMoveAccessibleMove, INextMovesPredictableMove, INextMovesPredictedMove { }
-    public interface ITreeLeaf : ITreeComponent, IPreviousMoveAccessibleMove, IPreviousMoveSpecifiableMove { }
-    public interface ITreeFlower : ITreeComponent, IPreviousMoveSpecifiableMove, IPreviousMoveAccessibleMove, INextMovesPredictableMove, INextMovesPredictedMove { }
-    public interface ITreeFruit : ITreeComponent, IPreviousMoveAccessibleMove, IPreviousMoveSpecifiableMove { }
+    //public interface ITreeRoot : ITreeComponent, INextMovesPredictableMove, INextMovesPredictedMove { }
+    public interface IGrowingTreeComponent : ITreeComponent, INextMovesPredictableMove, INextMovesPredictedMove { }
+    public interface ILivingTreeComponent : ITreeComponent, IPreviousMoveAccessibleMove, IPreviousMoveSpecifiableMove { }
+    public interface ITreeBranch : IGrowingTreeComponent { }
+    public interface ITreeLeaf : ILivingTreeComponent { }
+    public interface ITreeFlower : IGrowingTreeComponent { }
+    public interface ITreeFruit : ILivingTreeComponent { }
 
     public interface ITree
     {
+        public IEnumerable<IMove> PredictedNextMoves { get; }
         public IMoveRetriever PlayedMoves { get; }
-        public INextMovesPredictedMove LastPlayedMove { get; }
         public void Cuttings(IMove newPlayedMove);
         public void Prune(ITreeComponent nextMovesPredictableMove);
-        public void Sowing(IMoveRetriever playedMoves, IMove lastPlayedMove);
+        public void Sowing(IMove lastPlayedMove, IMoveRetriever playedMoves);
     }
 
     // because the next possible possition can be predicted base on 
-    public abstract partial class AbstractTree<TTreeRootFactoryProduct, TTreeBranchFactoryProduct, TTreeLeafFactoryProduct, TTreeFlowerFactoryProduct, TTreeFruitFactoryProduct> : ITree
-        where TTreeRootFactoryProduct : ITreeRoot, ICategorizableMove, ICategorizedMove
-        where TTreeBranchFactoryProduct : ITreeBranch, ICategorizableMove, ICategorizedMove
-        where TTreeLeafFactoryProduct : ITreeLeaf, ICategorizableMove, ICategorizedMove
-        where TTreeFlowerFactoryProduct : ITreeFlower, ICategorizableMove, ICategorizedMove
-        where TTreeFruitFactoryProduct : ITreeFruit, ICategorizableMove, ICategorizedMove
+    public abstract partial class AbstractTree<TTreeComponent> : ITree
+        where TTreeComponent : ITreeComponent
     {
         public AbstractTree(
             Tuple<IPlayer, IPlayer> players,
             IBoard playingBoard,
             IMove lastPlayedMove,
-            IMoveRetriever playedMoveRetriever,
-            IMoveCategorizer moveCategorizer,
-            IMoveFacotry<TTreeRootFactoryProduct> treeRootFactory,
-            IMoveFacotry<TTreeBranchFactoryProduct> treeBranchFactory,
-            IMoveFacotry<TTreeLeafFactoryProduct> treeLeafFactory,
-            IMoveFacotry<TTreeFlowerFactoryProduct> treeFlowerFactory,
-            IMoveFacotry<TTreeFruitFactoryProduct> treeFruitFactory)
+            IMoveRetriever playedMoveRetriever)
         {
-            _players = players;
+            Players = players;
             PlayingBoard = playingBoard;
+
             _playedMoveLog = new PlayedMoveLog(playingBoard, playedMoveRetriever);
             _predictedPreviousMoveRetriever = new PredictedPreviousMoveRetriever(_playedMoveLog);
-            MoveCategorizer = moveCategorizer;
 
-            TreeRootFactory = treeRootFactory;
-            TreeBranchFactory = treeBranchFactory;
-            TreeLeafFactory = treeLeafFactory;
-            TreeFlowerFactory = treeFlowerFactory;
-            TreeFruitFactory = treeFruitFactory;
-
-            Root = TreeRootFactory.Produce(lastPlayedMove.Row, lastPlayedMove.Column, lastPlayedMove.Player);
-            Growth(Root);
+            _lastPlayedMove = lastPlayedMove;
+            _predictedNextMoves = null;
         }
 
-        // currently I find one of predicted move as new root, but should it be? everytime tree need to be growthed, the old design require to make new instance of root, setup its state become the state of nonroot node also remove reference to the old one, but should it work like that? it is more efficient if the old branch become root, or should it be no root at all? No. Because the tree represent as state of game, if ... No, even in the case where root is removed or the root now will only be instance of IMove, I think I still missing the way to retrieve played move. analyzer should work on tree, bound with tree. Then should tree hold reference to the played moves? should analyzer get it as played moves retriever?
-        public INextMovesPredictedMove LastPlayedMove => Root;
         public IMoveRetriever PlayedMoves => GetMoveRetriever();
-
-        protected ITreeRoot Root { get; set; }
-        protected IMoveFacotry<TTreeRootFactoryProduct> TreeRootFactory { get; private set; }
-        protected IMoveFacotry<TTreeBranchFactoryProduct> TreeBranchFactory { get; private set; }
-        protected IMoveFacotry<TTreeLeafFactoryProduct> TreeLeafFactory { get; private set; }
-        protected IMoveFacotry<TTreeFlowerFactoryProduct> TreeFlowerFactory { get; private set; }
-        protected IMoveFacotry<TTreeFruitFactoryProduct> TreeFruitFactory { get; private set; }
-
+        protected Tuple<IPlayer, IPlayer> Players { get; private set; }
         protected IBoard PlayingBoard { get; private set; }
-        protected IMoveCategorizer MoveCategorizer { get; private set; }
 
-        private Tuple<IPlayer, IPlayer> _players;
-
-        // cannot sure if the last move in move retriever is last played move, but the move order is not important to predict next possible moves after a move is played so I let the design of this method like this.
-        protected abstract IEnumerable<Tuple<int, int>> PredictPossibleNextMovesPosition(IMove lastPlayedMove, IMoveRetriever boardStateBeforeLastMovePlayed);
-
-        protected IPlayer GetNextPlayablePlayer(IMove afterThisMoveIsPlayed) => _players.Item1.Equals(afterThisMoveIsPlayed.Player) ? _players.Item1 : _players.Item2;
-    }
-
-    partial class AbstractTree<TTreeRootFactoryProduct, TTreeBranchFactoryProduct, TTreeLeafFactoryProduct, TTreeFlowerFactoryProduct, TTreeFruitFactoryProduct>
-    {
-        // should tree be reset at this point?
-        public void Cuttings(IMove newPlayedMove)
+        private ITreeComponent? _root;
+        protected ITreeComponent Root
         {
-            bool playedMoveListContainsNewPlayedMove = _playedMoveLog.Any((IMove playedMove) => playedMove.Equals(newPlayedMove));
-            if (!playedMoveListContainsNewPlayedMove)
+            get
             {
-                // should throw something here instead of return false.
-                throw new NotImplementedException();
-            }
-
-            // check if the new played move is actually a predicted move from branch. If it isn't, regenerate from this. If it is, keep this branch, prune the others, and keep generate to max height.
-
-            bool newPlayedMoveHasBeenPredicted = Root.PredictedNextMoves.Any((IMove checkedPredictedMove) => checkedPredictedMove.Equals(newPlayedMove));
-
-            // create new root, but hasn't remove the old root yet
-            var currentPlayablePlayer = GetNextPlayablePlayer(newPlayedMove);
-            var factoryProduct = TreeComponentFactory.Produce(newPlayedMove.Row, newPlayedMove.Column, currentPlayablePlayer);
-            if (factoryProduct is not ITreeRoot)
-            {
-                throw new NotImplementedException();
-            }
-            var newRoot = (ITreeRoot)factoryProduct;
-            var treeHeightLimitation = (PlayingBoard.WinningCondition - 2) * 2 + 1 + 2;
-            if (newPlayedMoveHasBeenPredicted is false)
-            {
-                // remove all predicted branches from current actual root
-                foreach (var predictecMove in Root.PredictableNextMoves)
+                if (_root is null)
                 {
-                    if (predictecMove is ITreeComponent treeComponent)
+                    throw new NotImplementedException();
+                }
+                else
+                {
+                    return _root;
+                }
+            }
+            private set
+            {
+                _root = value;
+            }
+        }
+
+        private IMove? _lastPlayedMove;
+        private IEnumerable<IMove>? _predictedNextMoves;
+        public IEnumerable<IMove> PredictedNextMoves
+        {
+            get
+            {
+                if (_predictedNextMoves is not null)
+                {
+                    return _predictedNextMoves;
+                }
+                else
+                {
+                    if (_lastPlayedMove is not null)
                     {
-                        Prune(treeComponent);
+                        var mockOfRoot = new Mock<IGrowingTreeComponent>();
+                        mockOfRoot.Setup((root) => root.Row).Returns(_lastPlayedMove.Row);
+                        mockOfRoot.Setup((root) => root.Column).Returns(_lastPlayedMove.Column);
+                        mockOfRoot.Setup((root) => root.Player).Returns(_lastPlayedMove.Player);
+                        uint componentHeight = 0;
+                        mockOfRoot.Setup((root) => root.ComponentHeight).Returns(componentHeight);
+
+                        var nextMoves = new List<IMove>();
+                        mockOfRoot.Setup((root) => root.PredictedNextMoves).Returns(nextMoves);
+                        mockOfRoot.Setup((root) => root.PredictableNextMoves).Returns(nextMoves);
+                        Root = mockOfRoot.Object;
+
+                        Sowing(Root, GetMoveRetriever());
+                        _predictedNextMoves = nextMoves;
+                        return _predictedNextMoves;
                     }
                     else
                     {
                         throw new NotImplementedException();
                     }
                 }
+            }
+            set => _predictedNextMoves = value;
+        }
 
-                // make new played move become new root
-                Root = newRoot;
+        // cannot sure if the last move in move retriever is last played move, but the move order is not important to predict next possible moves after a move is played so I let the design of this method like this.
+        protected abstract IEnumerable<TTreeComponent> Generate(IMove node, IMoveRetriever nutrition);
+    }
 
-                // regenerate tree from new actual root
-                Growth(Root, GetMoveRetriever());
+    partial class AbstractTree<TTreeComponent>
+    {
+        public void Cuttings(IMove newPlayedMove)
+        {
+            var temp = PredictedNextMoves.FirstOrDefault((move) => move.Equals(newPlayedMove));
+
+            if (temp is not null)
+            {
+                if (temp is ITreeComponent component)
+                {
+                    Root = component;
+                    if (Root is IGrowingTreeComponent growingRoot)
+                    {
+                        Growth(growingRoot);
+                        PredictedNextMoves = growingRoot.PredictedNextMoves;
+                    }
+                    _playedMoveLog.Record(newPlayedMove);
+                    return;
+                }
             }
             else
             {
-                var node = Root.PredictedNextMoves.First((IMove checkedMove) => checkedMove.Equals(newPlayedMove));
-                if (node is not ITreeComponent)
-                {
-                    throw new ArgumentException();
-                }
-
-                if (node is not INextMovesPredictedMove)
-                {
-                    throw new ArgumentException();
-                }
-                var predictedNextMovesFromNewRoot = ((INextMovesPredictedMove)node).PredictedNextMoves;
-
-                // remove all other branches that is not from predicted branch
-                Root.PredictableNextMoves.Clear();
-
-                // replace old root with new root
-                Root = newRoot;
-                Root.PredictableNextMoves.Concat(predictedNextMovesFromNewRoot);
-
-                // regenerate from leaf of tree (supposing that all predicted move is correct)
-                Action<ITreeComponent>? generateIfNodeIsNotGenerated = null;
-
-                generateIfNodeIsNotGenerated = (ITreeComponent treeComponent) =>
-                {
-                    if (treeComponent is INextMovesPredictableMove nextMovesPredictableMove
-                    && treeComponent.ComponentHeight < treeHeightLimitation)
-                    {
-                        if (nextMovesPredictableMove.PredictableNextMoves.Count > 0)
-                        {
-                            foreach (var predictedMove in nextMovesPredictableMove.PredictableNextMoves)
-                            {
-                                if (predictedMove is ITreeComponent subNode)
-                                {
-                                    if (generateIfNodeIsNotGenerated is not null)
-                                    {
-                                        generateIfNodeIsNotGenerated(subNode);
-                                    }
-                                    else
-                                    {
-                                        throw new NotImplementedException();
-                                    }
-                                }
-                            }
-                        }
-                        else
-                        {
-                            if (treeComponent is IPreviousMoveAccessibleMove nonRoot)
-                            {
-                                Growth(treeComponent, GetMoveRetriever(nonRoot));
-                            }
-                            else
-                            {
-                                Growth(treeComponent, GetMoveRetriever());
-                            }
-                        }
-                    }
-                };
-
-                generateIfNodeIsNotGenerated(Root);
+                throw new NotImplementedException();
             }
         }
 
@@ -225,10 +172,10 @@ namespace ComputerPlayer.Analyzer
             }
         }
 
-        public void Sowing(IMoveRetriever newSoil, IMove newSeed)
+        public void Sowing(IMove newSeed, IMoveRetriever newSoil)
         {
-            // remove the old tree
-            foreach (var predictedMove in Root.PredictableNextMoves)
+            // remove everything unless the root
+            foreach (var predictedMove in PredictedNextMoves)
             {
                 if (predictedMove is ITreeComponent branch)
                 {
@@ -239,33 +186,36 @@ namespace ComputerPlayer.Analyzer
                     throw new NotImplementedException();
                 }
             }
-            // move seed to new soil
+            // move root to new soil
             _playedMoveLog = new PlayedMoveLog(PlayingBoard, newSoil);
-            // make seed become root
-            Root = TreeRootFactory.Produce(newSeed.Row, newSeed.Column, newSeed.Player);
-            // make tree growth from root
-            Growth(Root);
+            // regrowth root
+            var predictedMoves = new List<IMove>();
+            var mockOfGrowingTreeRoot = new Mock<IGrowingTreeComponent>();
+            mockOfGrowingTreeRoot.Setup((treeComponent) => treeComponent.Row).Returns(newSeed.Row);
+            mockOfGrowingTreeRoot.Setup((treeComponent) => treeComponent.Column).Returns(newSeed.Column);
+            mockOfGrowingTreeRoot.Setup((treeComponent) => treeComponent.Player).Returns(newSeed.Player);
+            uint componentHeight = 0;
+            mockOfGrowingTreeRoot.Setup((treeComponent) => treeComponent.ComponentHeight).Returns(componentHeight);
+            mockOfGrowingTreeRoot.Setup((growingTreeComponent) => growingTreeComponent.PredictableNextMoves).Returns(predictedMoves);
+            mockOfGrowingTreeRoot.Setup((growingTreeComponent) => growingTreeComponent.PredictedNextMoves).Returns(predictedMoves);
+            Growth(mockOfGrowingTreeRoot.Object);
+            PredictedNextMoves = predictedMoves;
         }
 
-        public class NodeHeightException : Exception { }
+        public class NodeHeightLimitationException : Exception { }
         public class UngrowthableNodeException : Exception { }
-        
-        internal void Growth(ITreeComponent node)
-        {
-            if (node is not INextMovesPredictableMove)
-            {
-                throw new UngrowthableNodeException();
-            }
 
-            var nextMovesPredictableMove = (INextMovesPredictableMove)node;
+        internal void Growth(IGrowingTreeComponent node)
+        {
             var treeHeightLimitation = (PlayingBoard.WinningCondition - 2) * 2 + 1 + 2;
 
             if (!(node.ComponentHeight < treeHeightLimitation))
             {
-                throw new NodeHeightException();
+                throw new NodeHeightLimitationException();
             }
             IMoveRetriever moveRetriever;
 
+            // will the last previous move is really some played move? I don't know either. Let's trust that everything is predicted correctly.
             if (node is IPreviousMoveAccessibleMove previousMoveAccessibleMove)
             {
                 moveRetriever = GetMoveRetriever(previousMoveAccessibleMove);
@@ -275,31 +225,30 @@ namespace ComputerPlayer.Analyzer
                 moveRetriever = GetMoveRetriever();
             }
 
-            var predictedNextPossibleMovePositions = PredictPossibleNextMovesPosition(nextMovesPredictableMove, moveRetriever);
-            var nextPlayablePlayer = GetNextPlayablePlayer(node);
-            foreach (var position in predictedNextPossibleMovePositions)
+            IEnumerable<TTreeComponent> nextPossibleMoves;
+            if (node is INextMovesPredictedMove nextNodesGeneratedNode
+                && nextNodesGeneratedNode.PredictedNextMoves.Any())
             {
-                var row = position.Item1;
-                var column = position.Item2;
-                var player = nextPlayablePlayer;
-                var newPredictedMove = TreeComponentFactory.Produce(row, column, player);
-                newPredictedMove.ComponentHeight = node.ComponentHeight + 1;
-                nextMovesPredictableMove.PredictableNextMoves.Add(newPredictedMove);
+                // I don't expect there is move that different type of TTreeComponent in thesse next predicted moves.
+                nextPossibleMoves = nextNodesGeneratedNode.PredictedNextMoves.OfType<TTreeComponent>();
             }
-            foreach (var predictedMove in nextMovesPredictableMove.PredictableNextMoves)
+            else
             {
-                if (predictedMove is not ITreeComponent)
-                {
-                    throw new NotImplementedException();
-                }
+                nextPossibleMoves = Generate(node, moveRetriever);
+            }
 
-                var newPredictedTreeComponent = (ITreeComponent)predictedMove;
-
+            foreach (var predictedMoves in nextPossibleMoves)
+            {
+                node.PredictableNextMoves.Add(predictedMoves);
+                predictedMoves.ComponentHeight = node.ComponentHeight + 1;
                 try
                 {
-                    Growth(newPredictedTreeComponent);
+                    if (predictedMoves is IGrowingTreeComponent growingTreeComponent)
+                    {
+                        Growth(growingTreeComponent);
+                    }
                 }
-                catch (NodeHeightException)
+                catch (NodeHeightLimitationException)
                 {
 
                 }
@@ -311,7 +260,7 @@ namespace ComputerPlayer.Analyzer
         }
     }
 
-    partial class AbstractTree<TTreeRootFactoryProduct, TTreeBranchFactoryProduct, TTreeLeafFactoryProduct, TTreeFlowerFactoryProduct, TTreeFruitFactoryProduct>
+    partial class AbstractTree<TTreeComponent>
     {
         private PlayedMoveLog _playedMoveLog;
 
@@ -413,53 +362,178 @@ namespace ComputerPlayer.Analyzer
         }
     }
 
-    public class UnoptimizedTree1<TTreeComponent> : AbstractTree<TTreeComponent>
-        where TTreeComponent : ITreeComponent
+    // generate base on the move type categories
+    public class TreeImplement1
+        <TTreeComponent,
+        TTreeBranchFactoryProduct,
+        TTreeLeafFactoryProduct,
+        TTreeFlowerFactoryProduct,
+        TTreeFruitFactoryProduct>
+        : AbstractTree<TTreeComponent>
+        where TTreeComponent : ITreeComponent, ICategorizableMove, ICategorizedMove
+        where TTreeBranchFactoryProduct : ITreeBranch, TTreeComponent
+        where TTreeLeafFactoryProduct : ITreeLeaf, TTreeComponent
+        where TTreeFlowerFactoryProduct : ITreeFlower, TTreeComponent
+        where TTreeFruitFactoryProduct : ITreeFruit, TTreeComponent
     {
-        public UnoptimizedTree1(Tuple<IPlayer, IPlayer> players, IMoveFacotry<TTreeComponent> treeComponentFactory, IBoard playingBoard, IMoveRetriever playedMoveRetriever) : base(players, treeComponentFactory, playingBoard, playedMoveRetriever)
+        public TreeImplement1(
+            Tuple<IPlayer, IPlayer> players,
+            IBoard playingBoard,
+            IMove lastPlayedMove,
+            IMoveRetriever playedMoveRetriever,
+            IMoveCategorizer moveCategorizer,
+            IMoveFacotry<TTreeBranchFactoryProduct> treeBranchFactory,
+            IMoveFacotry<TTreeLeafFactoryProduct> treeLeafFactory,
+            IMoveFacotry<TTreeFlowerFactoryProduct> treeFlowerFactory,
+            IMoveFacotry<TTreeFruitFactoryProduct> treeFruitFactory)
+            : base(players, playingBoard, lastPlayedMove, playedMoveRetriever)
         {
+            MoveCategorizer = moveCategorizer;
+
+            TreeBranchFactory = treeBranchFactory;
+            TreeLeafFactory = treeLeafFactory;
+            TreeFlowerFactory = treeFlowerFactory;
+            TreeFruitFactory = treeFruitFactory;
         }
 
-        protected override IEnumerable<Tuple<int, int>> PredictPossibleNextMovesPosition(IMove afterThisPlayedMoveFromOpponent, IMoveRetriever withThosePreviousPlayedMoves)
+        protected IMoveFacotry<TTreeBranchFactoryProduct> TreeBranchFactory { get; private set; }
+        protected IMoveFacotry<TTreeLeafFactoryProduct> TreeLeafFactory { get; private set; }
+        protected IMoveFacotry<TTreeFlowerFactoryProduct> TreeFlowerFactory { get; private set; }
+        protected IMoveFacotry<TTreeFruitFactoryProduct> TreeFruitFactory { get; private set; }
+        protected IMoveCategorizer MoveCategorizer { get; private set; }
+
+        protected override IEnumerable<TTreeComponent> Generate(IMove node, IMoveRetriever nutrition)
         {
-            var winningCondition = PlayingBoard.WinningCondition;
-            var numberOfRows = PlayingBoard.NumberOfRows;
-            var numberOfColumns = PlayingBoard.NumberOfColumns;
-            var opponent = GetNextPlayablePlayer(afterThisPlayedMoveFromOpponent);
-            var playedMoveRetriever = afterThisPlayedMoveFromOpponent is IPreviousMoveAccessibleMove previousMoveAccessible ? GetMoveRetriever(previousMoveAccessible) : GetMoveRetriever();
+            // prepare
+            IPlayer nextPlayablePlayer = base.Players.Item1.Equals(node.Player) ? base.Players.Item2 : base.Players.Item2;
 
-            var mockOfIEqualityComparer = new Mock<IEqualityComparer<Tuple<int, int>>>();
-            mockOfIEqualityComparer
-                .Setup((comparer) => comparer.Equals(It.IsAny<Tuple<int, int>>(), It.IsAny<Tuple<int, int>>()))
-                .Returns<Tuple<int, int>, Tuple<int, int>>((position, otherPosition) =>
-                {
-                    return position.Item1 == otherPosition.Item1
-                        && position.Item2 == otherPosition.Item2;
-                });
+            // predict next possible move locations
+            IEnumerable<Tuple<int, int>> nextPossibleLocations = Enumerable.Empty<Tuple<int, int>>();
+            //if (node is IPreviousMoveAccessibleMove previousMoveAccessibleNode
+            //    && previousMoveAccessibleNode.PreviousMove is ICategorizableMove previousMoveCategorizedNode
+            //    && previousMoveCategorizedNode.Categories.OfType<IForkMoveType>().Any()
+            //    && node is ICategorizedMove categorizedNode
+            //    && !categorizedNode.Categories.OfType<IBlockForkMoveType>().Any()
+            //    )
+            //{
 
-            var possibleMeaningLocations = new HashSet<Tuple<int, int>>(mockOfIEqualityComparer.Object);
-           
-            foreach (var playedMove in playedMoveRetriever)
+            //}
+            //else
+            if (node is IPreviousMoveAccessibleMove previousNode
+                && previousNode.PreviousMove is IPreviousMoveAccessibleMove previousOfPreviousNode
+                && previousOfPreviousNode.PreviousMove is INextMovesPredictedMove previousOfPreviousNextMovesPredictedNode)
             {
-                var minRow = playedMove.Row - (winningCondition - 1);
-                minRow = minRow >= 0 ? minRow : 0;
-                var maxRow = playedMove.Row + (winningCondition - 1);
-                maxRow = maxRow <= numberOfRows ? maxRow : numberOfRows;
+                var sameRankGeneratedNodes = previousOfPreviousNextMovesPredictedNode.PredictedNextMoves.Where((move) => !move.Equals(node));
+                nextPossibleLocations.Concat(sameRankGeneratedNodes.Select((move) => new Tuple<int, int>(move.Row, move.Column)));
 
-                var minColumn = playedMove.Column - (winningCondition - 1);
-                minColumn = minColumn >= 0 ? minColumn : 0;
-                var maxColumn = playedMove.Column + (winningCondition - 1);
-                maxColumn = maxColumn <= numberOfColumns ? maxColumn : numberOfColumns;
+                var minimumRow = node.Row - base.PlayingBoard.WinningCondition;
+                if (minimumRow < 0) { minimumRow = 0; }
+                var maximumRow = node.Row + base.PlayingBoard.WinningCondition;
+                if (maximumRow > base.PlayingBoard.NumberOfColumns) { maximumRow = base.PlayingBoard.NumberOfColumns; }
 
-                for (int row = minRow; row <= maxRow; row++)
+                var minimumColumn = node.Column - base.PlayingBoard.WinningCondition;
+                if (minimumColumn < 0) { minimumColumn = 0; }
+                var maximumColumn = node.Column + base.PlayingBoard.WinningCondition;
+                if (maximumColumn > base.PlayingBoard.NumberOfColumns) { maximumColumn = base.PlayingBoard.NumberOfColumns; }
+
+                for (int row = minimumRow; row <= maximumRow; row++)
                 {
-                    for (int column = minColumn; column <= maxColumn; column++)
+                    for (int column = minimumColumn; column <= maximumColumn; column++)
                     {
-                        possibleMeaningLocations.Add(new Tuple<int, int>(row, column));
+                        if (nutrition.Retrieve(row, column) is null)
+                        {
+                            nextPossibleLocations = nextPossibleLocations.Append(new Tuple<int, int>(row, column));
+                        }
                     }
                 }
             }
-            return possibleMeaningLocations;
+            else
+            {
+                var mockOfIEqualityComparer = new Mock<IEqualityComparer<Tuple<int, int>>>();
+                mockOfIEqualityComparer
+                    .Setup((comparer) => comparer.Equals(It.IsAny<Tuple<int, int>>(), It.IsAny<Tuple<int, int>>()))
+                    .Returns<Tuple<int, int>, Tuple<int, int>>((position, otherPosition) =>
+                    {
+                        return position.Item1 == otherPosition.Item1
+                            && position.Item2 == otherPosition.Item2;
+                    });
+                var possibleLocations = new HashSet<Tuple<int, int>>(mockOfIEqualityComparer.Object);
+                foreach (var playedMove in nutrition)
+                {
+                    var minimumRow = node.Row - base.PlayingBoard.WinningCondition;
+                    if (minimumRow < 0) { minimumRow = 0; }
+                    var maximumRow = node.Row + base.PlayingBoard.WinningCondition;
+                    if (maximumRow > base.PlayingBoard.NumberOfColumns - 1) { maximumRow = base.PlayingBoard.NumberOfColumns - 1; }
+
+                    var minimumColumn = node.Column - base.PlayingBoard.WinningCondition;
+                    if (minimumColumn < 0) { minimumColumn = 0; }
+                    var maximumColumn = node.Column + base.PlayingBoard.WinningCondition;
+                    if (maximumColumn > base.PlayingBoard.NumberOfColumns - 1) { maximumColumn = base.PlayingBoard.NumberOfColumns - 1; }
+
+                    for (int row = minimumRow; row <= maximumRow; row++)
+                    {
+                        for (int column = minimumColumn; column <= maximumColumn; column++)
+                        {
+                            possibleLocations.Add(new Tuple<int, int>(row, column));
+                        }
+                    }
+                }
+                nextPossibleLocations = nextPossibleLocations.Concat(possibleLocations);
+            }
+
+            if (!nextPossibleLocations.Any())
+            {
+                throw new UngrowthableNodeException();
+            }
+
+            // categorize those location and generate move base on those location
+            bool canOnlyPlayOneMoreMove = nutrition.Count() == (base.PlayingBoard.NumberOfRows * base.PlayingBoard.NumberOfColumns) - 1;
+
+            var result = new LinkedList<TTreeComponent>();
+            foreach (var predictedLocation in nextPossibleLocations)
+            {
+                var mockOfMove = new Mock<IMove>();
+                mockOfMove.Setup((move) => move.Row).Returns(predictedLocation.Item1);
+                mockOfMove.Setup((move) => move.Column).Returns(predictedLocation.Item2);
+                mockOfMove.Setup((move) => move.Player).Returns(nextPlayablePlayer);
+                var categories = MoveCategorizer.Categorize(mockOfMove.Object, nutrition, base.PlayingBoard);
+
+                if (categories.OfType<IWinningMoveType>().Any())
+                {
+                    var product = TreeFruitFactory.Produce(predictedLocation.Item1, predictedLocation.Item2, nextPlayablePlayer);
+                    ((IPreviousMoveSpecifiableMove)product).PreviousMove = node;
+                    ((ICategorizableMove)product).Categories.Concat(categories);
+                    result.AddFirst(product);
+                }
+                // check if this move is last playable move?
+                if (canOnlyPlayOneMoreMove)
+                {
+                    var product = TreeLeafFactory.Produce(predictedLocation.Item1, predictedLocation.Item2, nextPlayablePlayer);
+                    ((IPreviousMoveSpecifiableMove)product).PreviousMove = node;
+                    ((ICategorizableMove)product).Categories.Concat(categories);
+                    result.AddFirst(product);
+                    continue;
+                }
+                if (categories.OfType<IForkMoveType>().Any()
+                    || categories.OfType<IBlockWinningMoveType>().Any()
+                    || categories.OfType<IBlockForkMoveType>().Any())
+                {
+                    var product = TreeFlowerFactory.Produce(predictedLocation.Item1, predictedLocation.Item2, nextPlayablePlayer);
+                    ((IPreviousMoveSpecifiableMove)product).PreviousMove = node;
+                    ((ICategorizableMove)product).Categories.Concat(categories);
+                    result.AddFirst(product);
+                }
+                if (categories.OfType<IOffensiveMoveType>().Any()
+                    || categories.OfType<IDefensiveMoveType>().Any())
+                {
+                    var product = TreeBranchFactory.Produce(predictedLocation.Item1, predictedLocation.Item2, nextPlayablePlayer);
+                    ((IPreviousMoveSpecifiableMove)product).PreviousMove = node;
+                    ((ICategorizableMove)product).Categories.Concat(categories);
+                    result.AddFirst(product);
+                }
+            }
+
+            return result;
         }
     }
 }

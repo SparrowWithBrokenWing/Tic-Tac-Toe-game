@@ -9,19 +9,8 @@
 
     public class Move : IMove
     {
-        public Move(int row, int column, IPlayer player, IMoveLog currentBoardState)
+        public Move(int row, int column, IPlayer player)
         {
-            if (row < 0 || column < 0)
-            {
-                throw new ArgumentException();
-            }
-
-            if (row > currentBoardState.PlayingBoard.NumberOfRows
-                || column > currentBoardState.PlayingBoard.NumberOfColumns)
-            {
-                throw new ArgumentException();
-            }
-
             Row = row;
             Column = column;
             Player = player;

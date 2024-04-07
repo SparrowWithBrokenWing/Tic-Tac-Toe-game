@@ -1,7 +1,4 @@
-﻿using System;
-using System.Collections;
-using System.Runtime.CompilerServices;
-using System.Xml.Xsl;
+﻿using System.Collections;
 
 namespace ComputerPlayer
 {
@@ -129,12 +126,12 @@ namespace ComputerPlayer
             }
         }
 
-        IMove? IMoveRetriever.Retrieve(int row, int column)
+        public IMove? Retrieve(int row, int column)
         {
             return this[row, column];
         }
 
-        void IMoveRecorder.Record(IMove move)
+        public void Record(IMove move)
         {
             this[move.Row, move.Column] = move;
         }
