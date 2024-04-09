@@ -1,17 +1,20 @@
-﻿namespace ComputerPlayer.Analyzer
+using Moq;
+using System.Reflection;
+
+namespace ComputerPlayer.Analyzer
 {
     public interface IMoveType { }
 
     public interface IPossibleMoveType : IMoveType { }
     public interface ITacticalMoveType : IPossibleMoveType { }
 
-    public interface IOffensiveMoveType  : ITacticalMoveType { }
-    public interface IForkMoveType  : IOffensiveMoveType  { }
-    public interface IWinningMoveType  : IOffensiveMoveType  { }
+    public interface IOffensiveMoveType : ITacticalMoveType { }
+    public interface IForkMoveType : IOffensiveMoveType { }
+    public interface IWinningMoveType : IOffensiveMoveType { }
 
-    public interface IDefensiveMoveType  : ITacticalMoveType  { }
-    public interface IBlockForkMoveType  : IDefensiveMoveType  { }
-    public interface IBlockWinningMoveType  : IDefensiveMoveType  { }
+    public interface IDefensiveMoveType : ITacticalMoveType { }
+    public interface IBlockForkMoveType : IDefensiveMoveType { }
+    public interface IBlockWinningMoveType : IDefensiveMoveType { }
 
     public interface ICategorizableMove : IMove
     {
@@ -39,12 +42,48 @@
 
         public IEnumerable<IMoveType> Categorize(IMove move, IMoveRetriever moveRetriever, IBoard playingBoard)
         {
-            var result = new HashSet<IMoveType>();
+            var mockOfComparer = new Mock<IEqualityComparer<IMoveType>>();
+            mockOfComparer
+                .Setup((comparer) => comparer.Equals(It.IsAny<IMoveType>(), It.IsAny<IMoveType>()))
+                .Returns((IMoveType? first, IMoveType? second) =>
+                {
+                    const bool EQUAL = true;
+                    const bool DIFFERENT = false;
+                    if ((first is null || second is null)
+                        && (first is not null || second is not null))
+                    {
+                        return DIFFERENT;
+                    }
+                    else
+                    {
+                        if (first is not null && second is not null)
+                        {
+                            var interfacesOfFirst = first.GetType().GetInterfaces();
+                            var interfacesOfSecond = second.GetType().GetInterfaces();
+                            if (!interfacesOfFirst.Except(interfacesOfSecond).Any()
+                            && !interfacesOfSecond.Except(interfacesOfFirst).Any())
+                            {
+                                return EQUAL;
+                            }
+                            else
+                            {
+                                return DIFFERENT;
+                            }
+                        }
+                        else
+                        {
+                            return DIFFERENT;
+                        }
+                    }
+                });
+            var result = new HashSet<IMoveType>(mockOfComparer.Object);
+            //var result = new List<IMoveType>();
             foreach (var categorizer in _Categorizers)
             {
                 var moveTypes = categorizer.Categorize(move, moveRetriever, playingBoard);
                 foreach (var moveType in moveTypes)
                 {
+                    //if (moveTypes.OfType)
                     result.Add(moveType);
                 }
             }
@@ -172,7 +211,7 @@
 
             var numberOfNeededSatisifedLineSegment = 2;
 
-            var check = async (
+            var check = (
                 Func<int, int> getNextFrontMoveRowIndex,
                 Func<int, int> getNextFrontMoveColumnIndex,
                 Func<int, int> getNextBehindMoveRowIndex,
@@ -180,12 +219,7 @@
                 CancellationToken cancellationToken
                 ) =>
             {
-                var satisfiedCheckedMove = 0;
-                var isUnplayedMoveIgnored = false;
-                var cancellationTokenSource1 = new CancellationTokenSource();
-                var cancellationTokenSource2 = new CancellationTokenSource();
-
-                var checkPlayerofMove = (
+                var checkPlayerOfMove = (
                     int limitation,
                     Func<int, int> getNextCheckedMoveRowIndex,
                     Func<int, int> getNextCheckedMoveColumnIndex,
@@ -196,23 +230,26 @@
                 {
                     var checkedTimes = 0;
                     var currentCheckedMoveRowIndex = move.Row;
-                    var currentChecedkMoveColumnIndex = move.Column;
+                    var currentCheckedMoveColumnIndex = move.Column;
                     IMove? currentCheckedMove = null;
 
                     while (true)
                     {
-                        cancellationToken.ThrowIfCancellationRequested();
+                        if (cancellationToken.IsCancellationRequested)
+                        {
+                            return Task.FromCanceled(cancellationToken);
+                        }
 
                         checkedTimes++;
 
-                        if (checkedTimes >= limitation)
+                        if (checkedTimes > limitation)
                         {
                             break;
                         }
 
                         currentCheckedMoveRowIndex = getNextCheckedMoveRowIndex(currentCheckedMoveRowIndex);
-                        currentChecedkMoveColumnIndex = getNextCheckedMoveColumnIndex(currentChecedkMoveColumnIndex);
-                        currentCheckedMove = moveRetriever.Retrieve(currentCheckedMoveRowIndex, currentChecedkMoveColumnIndex);
+                        currentCheckedMoveColumnIndex = getNextCheckedMoveColumnIndex(currentCheckedMoveColumnIndex);
+                        currentCheckedMove = moveRetriever.Retrieve(currentCheckedMoveRowIndex, currentCheckedMoveColumnIndex);
 
                         if (currentCheckedMove is null)
                         {
@@ -238,8 +275,13 @@
                 var handleFoundLocker = new object();
                 var numberOfNeededSatisfiedCheckedMove = winningCondition - 2;
                 var searchRangeLimitation = winningCondition - 1;
+                var satisfiedCheckedMove = 0;
+                var isUnplayedMoveIgnored = false;
+                var frontSearchCancellationTokenSource = new CancellationTokenSource();
+                var behindSearchCancellationTokenSource = new CancellationTokenSource();
+
                 // should be search for direction of vector
-                var searchFront = checkPlayerofMove(
+                var searchFront = checkPlayerOfMove(
                     searchRangeLimitation,
                     getNextFrontMoveRowIndex,
                     getNextFrontMoveColumnIndex,
@@ -250,7 +292,7 @@
                         {
                             if (isUnplayedMoveIgnored)
                             {
-                                cancellationTokenSource1.Cancel();
+                                frontSearchCancellationTokenSource.Cancel();
                             }
                             isUnplayedMoveIgnored = true;
                         }
@@ -259,17 +301,17 @@
                     {
                         lock (handleFoundLocker)
                         {
-                            ++satisfiedCheckedMove;
+                            satisfiedCheckedMove = satisfiedCheckedMove + 1;
                             if (satisfiedCheckedMove >= numberOfNeededSatisfiedCheckedMove)
                             {
-                                cancellationTokenSource1.Cancel();
-                                cancellationTokenSource2.Cancel();
+                                frontSearchCancellationTokenSource.Cancel();
+                                behindSearchCancellationTokenSource.Cancel();
                             }
                         }
                     },
-                    () => cancellationTokenSource1.Cancel(),
-                    cancellationTokenSource1.Token);
-                var searchBehind = checkPlayerofMove(
+                    () => frontSearchCancellationTokenSource.Cancel(),
+                    frontSearchCancellationTokenSource.Token);
+                var searchBehind = checkPlayerOfMove(
                     searchRangeLimitation,
                     getNextBehindMoveRowIndex,
                     getNextBehindMoveColumnIndex,
@@ -280,7 +322,7 @@
                         {
                             if (isUnplayedMoveIgnored)
                             {
-                                cancellationTokenSource2.Cancel();
+                                behindSearchCancellationTokenSource.Cancel();
                             }
                             isUnplayedMoveIgnored = true;
                         }
@@ -289,25 +331,37 @@
                     {
                         lock (handleFoundLocker)
                         {
-                            ++satisfiedCheckedMove;
+                            satisfiedCheckedMove = satisfiedCheckedMove + 1;
                             if (satisfiedCheckedMove >= numberOfNeededSatisfiedCheckedMove)
                             {
-                                cancellationTokenSource1.Cancel();
-                                cancellationTokenSource2.Cancel();
+                                frontSearchCancellationTokenSource.Cancel();
+                                behindSearchCancellationTokenSource.Cancel();
                             }
                         }
                     },
-                    () => cancellationTokenSource2.Cancel(),
-                    cancellationTokenSource2.Token);
-                await Task.WhenAll(searchFront, searchBehind);
-                if (satisfiedCheckedMove >= numberOfNeededSatisfiedCheckedMove
-                && isUnplayedMoveIgnored)
+                    () => behindSearchCancellationTokenSource.Cancel(),
+                    behindSearchCancellationTokenSource.Token);
+                if (cancellationToken.IsCancellationRequested)
                 {
-                    return true;
+                    frontSearchCancellationTokenSource.Cancel();
+                    behindSearchCancellationTokenSource.Cancel();
+                }
+                try
+                {
+                    Task.WaitAll(searchFront, searchBehind);
+                }
+                catch
+                {
+
+                }
+                if (satisfiedCheckedMove >= numberOfNeededSatisfiedCheckedMove
+                /*&& isUnplayedMoveIgnored*/)
+                {
+                    return Task.FromResult(true);
                 }
                 else
                 {
-                    return false;
+                    return Task.FromResult(false);
                 }
             };
 
@@ -322,46 +376,46 @@
                 {
                     if (checkTask.IsCanceled)
                     {
-                        return Task.FromResult(false);
+                        return Task.CompletedTask;
                     }
                     if (checkTask.Result)
                     {
-                        numberOfSatisfiedLineSegment++;
+                        numberOfSatisfiedLineSegment = numberOfSatisfiedLineSegment + 1;
                     }
                     if (numberOfSatisfiedLineSegment >= numberOfNeededSatisifedLineSegment)
                     {
                         cancellationTokenSource.Cancel();
                     }
-                    return Task.FromResult(checkTask.Result);
+                    return Task.CompletedTask;
                 }
             };
 
             var checkVerticalLine = check(
-                    (int checkingMoveRowIndex) => checkingMoveRowIndex + 1,
-                    (int checkingMoveColumnIndex) => checkingMoveColumnIndex,
                     (int checkingMoveRowIndex) => checkingMoveRowIndex - 1,
+                    (int checkingMoveColumnIndex) => checkingMoveColumnIndex,
+                    (int checkingMoveRowIndex) => checkingMoveRowIndex + 1,
                     (int checkingMoveColumnIndex) => checkingMoveColumnIndex,
                     cancellationToken)
                 .ContinueWith(handleFinishedCheckTask);
             var checkHorizontalLine = check(
                     (int checkingMoveRowIndex) => checkingMoveRowIndex,
-                    (int checkingMoveColumnIndex) => checkingMoveColumnIndex + 1,
-                    (int checkingMoveRowIndex) => checkingMoveRowIndex,
                     (int checkingMoveColumnIndex) => checkingMoveColumnIndex - 1,
+                    (int checkingMoveRowIndex) => checkingMoveRowIndex,
+                    (int checkingMoveColumnIndex) => checkingMoveColumnIndex + 1,
                     cancellationToken)
                 .ContinueWith(handleFinishedCheckTask);
             var checkLeftDiagonal = check(
-                    (int checkingMoveRowIndex) => checkingMoveRowIndex + 1,
-                    (int checkingMoveColumnIndex) => checkingMoveColumnIndex + 1,
                     (int checkingMoveRowIndex) => checkingMoveRowIndex - 1,
                     (int checkingMoveColumnIndex) => checkingMoveColumnIndex - 1,
+                    (int checkingMoveRowIndex) => checkingMoveRowIndex + 1,
+                    (int checkingMoveColumnIndex) => checkingMoveColumnIndex + 1,
                     cancellationToken)
                 .ContinueWith(handleFinishedCheckTask);
             var checkRightDiagonal = check(
-                    (int checkingMoveRowIndex) => checkingMoveRowIndex + 1,
-                    (int checkingMoveColumnIndex) => checkingMoveColumnIndex - 1,
                     (int checkingMoveRowIndex) => checkingMoveRowIndex - 1,
                     (int checkingMoveColumnIndex) => checkingMoveColumnIndex + 1,
+                    (int checkingMoveRowIndex) => checkingMoveRowIndex + 1,
+                    (int checkingMoveColumnIndex) => checkingMoveColumnIndex - 1,
                     cancellationToken)
                 .ContinueWith(handleFinishedCheckTask);
 
@@ -369,7 +423,7 @@
             {
                 Task.WaitAll(checkVerticalLine, checkHorizontalLine, checkLeftDiagonal, checkRightDiagonal);
             }
-            catch(AggregateException aggregateException)
+            catch (AggregateException aggregateException)
             {
                 if (!(aggregateException.InnerException is TaskCanceledException))
                 {
@@ -392,20 +446,20 @@
     {
         public override IEnumerable<IMoveType> Categorize(IMove move, IMoveRetriever moveRetriever, IBoard playingBoard)
         {
-            if (!(playingBoard.WinningCondition - 2 > 0))
+            var winningCondition = playingBoard.WinningCondition;
+            var numberOfRows = playingBoard.NumberOfRows;
+            var numberOfColumns = playingBoard.NumberOfColumns;
+
+            if (!(winningCondition - 2 > 0))
             {
                 throw new ArgumentException();
             }
 
             var result = new List<IMoveType>(base.Categorize(move, moveRetriever, playingBoard));
 
-            var winningCondition = playingBoard.WinningCondition;
-            var numberOfRows = playingBoard.NumberOfRows;
-            var numberOfColumns = playingBoard.NumberOfColumns;
-            var numberOfNeededSatisfiedLineSegment = 1;
+            var numberOfNeededSatisifedLineSegment = 2;
 
-            // need a better name
-            var check = async (
+            var check = (
                 Func<int, int> getNextFrontMoveRowIndex,
                 Func<int, int> getNextFrontMoveColumnIndex,
                 Func<int, int> getNextBehindMoveRowIndex,
@@ -413,11 +467,7 @@
                 CancellationToken cancellationToken
                 ) =>
             {
-                var satisfiedCheckedMove = 0;
-                var cancellationTokenSource1 = new CancellationTokenSource();
-                var cancellationTokenSource2 = new CancellationTokenSource();
-
-                var checkPlayerofMove = (
+                var checkPlayerOfMove = (
                     int limitation,
                     Func<int, int> getNextCheckedMoveRowIndex,
                     Func<int, int> getNextCheckedMoveColumnIndex,
@@ -428,23 +478,26 @@
                 {
                     var checkedTimes = 0;
                     var currentCheckedMoveRowIndex = move.Row;
-                    var currentChecedkMoveColumnIndex = move.Column;
+                    var currentCheckedMoveColumnIndex = move.Column;
                     IMove? currentCheckedMove = null;
 
                     while (true)
                     {
-                        cancellationToken.ThrowIfCancellationRequested();
+                        if (cancellationToken.IsCancellationRequested)
+                        {
+                            return Task.FromCanceled(cancellationToken);
+                        }
 
                         checkedTimes++;
 
-                        if (checkedTimes >= limitation)
+                        if (checkedTimes > limitation)
                         {
                             break;
                         }
 
                         currentCheckedMoveRowIndex = getNextCheckedMoveRowIndex(currentCheckedMoveRowIndex);
-                        currentChecedkMoveColumnIndex = getNextCheckedMoveColumnIndex(currentChecedkMoveColumnIndex);
-                        currentCheckedMove = moveRetriever.Retrieve(currentCheckedMoveRowIndex, currentChecedkMoveColumnIndex);
+                        currentCheckedMoveColumnIndex = getNextCheckedMoveColumnIndex(currentCheckedMoveColumnIndex);
+                        currentCheckedMove = moveRetriever.Retrieve(currentCheckedMoveRowIndex, currentCheckedMoveColumnIndex);
 
                         if (currentCheckedMove is null)
                         {
@@ -467,56 +520,74 @@
                     return Task.CompletedTask;
                 };
 
-                var searchRangeLimitation = winningCondition - 1;
-                var numberOfNeededSatisfiedCheckedMove = winningCondition - 1;
                 var handleFoundLocker = new object();
+                var numberOfNeededSatisfiedCheckedMove = winningCondition - 1;
+                var searchRangeLimitation = winningCondition - 1;
+                var satisfiedCheckedMove = 0;
+                //var isUnplayedMoveIgnored = false;
+                var frontSearchCancellationTokenSource = new CancellationTokenSource();
+                var behindSearchCancellationTokenSource = new CancellationTokenSource();
+
                 // should be search for direction of vector
-                var searchFront = checkPlayerofMove(
+                var searchFront = checkPlayerOfMove(
                     searchRangeLimitation,
                     getNextFrontMoveRowIndex,
                     getNextFrontMoveColumnIndex,
-                    () => cancellationTokenSource1.Cancel(),
+                    () => frontSearchCancellationTokenSource.Cancel(),
                     () =>
                     {
                         lock (handleFoundLocker)
                         {
-                            ++satisfiedCheckedMove;
+                            satisfiedCheckedMove = satisfiedCheckedMove + 1;
                             if (satisfiedCheckedMove >= numberOfNeededSatisfiedCheckedMove)
                             {
-                                cancellationTokenSource1.Cancel();
-                                cancellationTokenSource2.Cancel();
+                                frontSearchCancellationTokenSource.Cancel();
+                                behindSearchCancellationTokenSource.Cancel();
                             }
                         }
                     },
-                    () => cancellationTokenSource1.Cancel(),
-                    cancellationTokenSource1.Token);
-                var searchBehind = checkPlayerofMove(
+                    () => frontSearchCancellationTokenSource.Cancel(),
+                    frontSearchCancellationTokenSource.Token);
+                var searchBehind = checkPlayerOfMove(
                     searchRangeLimitation,
                     getNextBehindMoveRowIndex,
                     getNextBehindMoveColumnIndex,
-                    () => cancellationTokenSource2.Cancel(),
+                    () => behindSearchCancellationTokenSource.Cancel(),
                     () =>
                     {
                         lock (handleFoundLocker)
                         {
-                            ++satisfiedCheckedMove;
+                            satisfiedCheckedMove = satisfiedCheckedMove + 1;
                             if (satisfiedCheckedMove >= numberOfNeededSatisfiedCheckedMove)
                             {
-                                cancellationTokenSource1.Cancel();
-                                cancellationTokenSource2.Cancel();
+                                frontSearchCancellationTokenSource.Cancel();
+                                behindSearchCancellationTokenSource.Cancel();
                             }
                         }
                     },
-                    () => cancellationTokenSource2.Cancel(),
-                    cancellationTokenSource2.Token);
-                await Task.WhenAll(searchFront, searchBehind);
-                if (satisfiedCheckedMove >= numberOfNeededSatisfiedCheckedMove)
+                    () => behindSearchCancellationTokenSource.Cancel(),
+                    behindSearchCancellationTokenSource.Token);
+                if (cancellationToken.IsCancellationRequested)
                 {
-                    return true;
+                    frontSearchCancellationTokenSource.Cancel();
+                    behindSearchCancellationTokenSource.Cancel();
+                }
+                try
+                {
+                    Task.WaitAll(searchFront, searchBehind);
+                }
+                catch
+                {
+
+                }
+                if (satisfiedCheckedMove >= numberOfNeededSatisfiedCheckedMove
+                /*&& isUnplayedMoveIgnored*/)
+                {
+                    return Task.FromResult(true);
                 }
                 else
                 {
-                    return false;
+                    return Task.FromResult(false);
                 }
             };
 
@@ -531,50 +602,60 @@
                 {
                     if (checkTask.IsCanceled)
                     {
-                        return Task.FromResult(false);
+                        return Task.CompletedTask;
                     }
                     if (checkTask.Result)
                     {
-                        numberOfSatisfiedLineSegment++;
+                        numberOfSatisfiedLineSegment = numberOfSatisfiedLineSegment + 1;
                     }
-                    if (numberOfSatisfiedLineSegment >= numberOfNeededSatisfiedLineSegment)
+                    if (numberOfSatisfiedLineSegment >= numberOfNeededSatisifedLineSegment)
                     {
                         cancellationTokenSource.Cancel();
                     }
-                    return Task.FromResult(checkTask.Result);
+                    return Task.CompletedTask;
                 }
             };
 
             var checkVerticalLine = check(
-                    (int checkingMoveRowIndex) => checkingMoveRowIndex + 1,
-                    (int checkingMoveColumnIndex) => checkingMoveColumnIndex,
                     (int checkingMoveRowIndex) => checkingMoveRowIndex - 1,
+                    (int checkingMoveColumnIndex) => checkingMoveColumnIndex,
+                    (int checkingMoveRowIndex) => checkingMoveRowIndex + 1,
                     (int checkingMoveColumnIndex) => checkingMoveColumnIndex,
                     cancellationToken)
                 .ContinueWith(handleFinishedCheckTask);
             var checkHorizontalLine = check(
                     (int checkingMoveRowIndex) => checkingMoveRowIndex,
-                    (int checkingMoveColumnIndex) => checkingMoveColumnIndex + 1,
-                    (int checkingMoveRowIndex) => checkingMoveRowIndex,
                     (int checkingMoveColumnIndex) => checkingMoveColumnIndex - 1,
+                    (int checkingMoveRowIndex) => checkingMoveRowIndex,
+                    (int checkingMoveColumnIndex) => checkingMoveColumnIndex + 1,
                     cancellationToken)
                 .ContinueWith(handleFinishedCheckTask);
             var checkLeftDiagonal = check(
-                    (int checkingMoveRowIndex) => checkingMoveRowIndex + 1,
-                    (int checkingMoveColumnIndex) => checkingMoveColumnIndex + 1,
                     (int checkingMoveRowIndex) => checkingMoveRowIndex - 1,
                     (int checkingMoveColumnIndex) => checkingMoveColumnIndex - 1,
+                    (int checkingMoveRowIndex) => checkingMoveRowIndex + 1,
+                    (int checkingMoveColumnIndex) => checkingMoveColumnIndex + 1,
                     cancellationToken)
                 .ContinueWith(handleFinishedCheckTask);
             var checkRightDiagonal = check(
-                    (int checkingMoveRowIndex) => checkingMoveRowIndex + 1,
-                    (int checkingMoveColumnIndex) => checkingMoveColumnIndex - 1,
                     (int checkingMoveRowIndex) => checkingMoveRowIndex - 1,
                     (int checkingMoveColumnIndex) => checkingMoveColumnIndex + 1,
+                    (int checkingMoveRowIndex) => checkingMoveRowIndex + 1,
+                    (int checkingMoveColumnIndex) => checkingMoveColumnIndex - 1,
                     cancellationToken)
                 .ContinueWith(handleFinishedCheckTask);
 
-            Task.WaitAll(checkVerticalLine, checkHorizontalLine, checkLeftDiagonal, checkRightDiagonal);
+            try
+            {
+                Task.WaitAll(checkVerticalLine, checkHorizontalLine, checkLeftDiagonal, checkRightDiagonal);
+            }
+            catch (AggregateException aggregateException)
+            {
+                if (!(aggregateException.InnerException is TaskCanceledException))
+                {
+                    throw;
+                }
+            }
 
             if (numberOfSatisfiedLineSegment >= 1)
             {
@@ -626,19 +707,20 @@
     {
         public override IEnumerable<IMoveType> Categorize(IMove move, IMoveRetriever moveRetriever, IBoard playingBoard)
         {
-            if (!(playingBoard.WinningCondition - 2 > 0))
+            var winningCondition = playingBoard.WinningCondition;
+            var numberOfRows = playingBoard.NumberOfRows;
+            var numberOfColumns = playingBoard.NumberOfColumns;
+
+            if (!(winningCondition - 2 > 0))
             {
                 throw new ArgumentException();
             }
 
             var result = new List<IMoveType>(base.Categorize(move, moveRetriever, playingBoard));
 
-            var winningCondition = playingBoard.WinningCondition;
-            var numberOfRows = playingBoard.NumberOfRows;
-            var numberOfColumns = playingBoard.NumberOfColumns;
             var numberOfNeededSatisifedLineSegment = 2;
 
-            var check = async (
+            var check = (
                 Func<int, int> getNextFrontMoveRowIndex,
                 Func<int, int> getNextFrontMoveColumnIndex,
                 Func<int, int> getNextBehindMoveRowIndex,
@@ -646,11 +728,7 @@
                 CancellationToken cancellationToken
                 ) =>
             {
-                var satisfiedCheckedMove = 0;
-                var cancellationTokenSource1 = new CancellationTokenSource();
-                var cancellationTokenSource2 = new CancellationTokenSource();
-
-                var checkPlayerofMove = (
+                var checkPlayerOfMove = (
                     int limitation,
                     Func<int, int> getNextCheckedMoveRowIndex,
                     Func<int, int> getNextCheckedMoveColumnIndex,
@@ -661,23 +739,26 @@
                 {
                     var checkedTimes = 0;
                     var currentCheckedMoveRowIndex = move.Row;
-                    var currentChecedkMoveColumnIndex = move.Column;
+                    var currentCheckedMoveColumnIndex = move.Column;
                     IMove? currentCheckedMove = null;
 
                     while (true)
                     {
-                        cancellationToken.ThrowIfCancellationRequested();
+                        if (cancellationToken.IsCancellationRequested)
+                        {
+                            return Task.FromCanceled(cancellationToken);
+                        }
 
                         checkedTimes++;
 
-                        if (checkedTimes >= limitation)
+                        if (checkedTimes > limitation)
                         {
                             break;
                         }
 
                         currentCheckedMoveRowIndex = getNextCheckedMoveRowIndex(currentCheckedMoveRowIndex);
-                        currentChecedkMoveColumnIndex = getNextCheckedMoveColumnIndex(currentChecedkMoveColumnIndex);
-                        currentCheckedMove = moveRetriever.Retrieve(currentCheckedMoveRowIndex, currentChecedkMoveColumnIndex);
+                        currentCheckedMoveColumnIndex = getNextCheckedMoveColumnIndex(currentCheckedMoveColumnIndex);
+                        currentCheckedMove = moveRetriever.Retrieve(currentCheckedMoveRowIndex, currentCheckedMoveColumnIndex);
 
                         if (currentCheckedMove is null)
                         {
@@ -699,45 +780,47 @@
 
                     return Task.CompletedTask;
                 };
-                //|O||-||O|
-                //|X||X||-|
-                //|O||-||X|
 
-                var isUnplayedMoveIgnored = false;
                 var handleFoundLocker = new object();
                 var numberOfNeededSatisfiedCheckedMove = winningCondition - 2;
                 var searchRangeLimitation = winningCondition - 1;
+                var satisfiedCheckedMove = 0;
+                var isUnplayedMoveIgnored = false;
+                var frontSearchCancellationTokenSource = new CancellationTokenSource();
+                var behindSearchCancellationTokenSource = new CancellationTokenSource();
 
-                var searchFront = checkPlayerofMove(
+                // should be search for direction of vector
+                var searchFront = checkPlayerOfMove(
                     searchRangeLimitation,
                     getNextFrontMoveRowIndex,
                     getNextFrontMoveColumnIndex,
                     () =>
                     {
+                        // that unplayed move is the next winning move.
                         lock (handleFoundLocker)
                         {
                             if (isUnplayedMoveIgnored)
                             {
-                                cancellationTokenSource1.Cancel();
+                                frontSearchCancellationTokenSource.Cancel();
                             }
                             isUnplayedMoveIgnored = true;
                         }
                     },
-                    () => cancellationTokenSource1.Cancel(),
+                    () => frontSearchCancellationTokenSource.Cancel(),
                     () =>
                     {
                         lock (handleFoundLocker)
                         {
-                            ++satisfiedCheckedMove;
+                            satisfiedCheckedMove = satisfiedCheckedMove + 1;
                             if (satisfiedCheckedMove >= numberOfNeededSatisfiedCheckedMove)
                             {
-                                cancellationTokenSource1.Cancel();
-                                cancellationTokenSource2.Cancel();
+                                frontSearchCancellationTokenSource.Cancel();
+                                behindSearchCancellationTokenSource.Cancel();
                             }
                         }
                     },
-                    cancellationTokenSource1.Token);
-                var searchBehind = checkPlayerofMove(
+                    frontSearchCancellationTokenSource.Token);
+                var searchBehind = checkPlayerOfMove(
                     searchRangeLimitation,
                     getNextBehindMoveRowIndex,
                     getNextBehindMoveColumnIndex,
@@ -748,33 +831,46 @@
                         {
                             if (isUnplayedMoveIgnored)
                             {
-                                cancellationTokenSource2.Cancel();
+                                behindSearchCancellationTokenSource.Cancel();
                             }
                             isUnplayedMoveIgnored = true;
                         }
                     },
-                    () => cancellationTokenSource2.Cancel(),
+                    () => behindSearchCancellationTokenSource.Cancel(),
                     () =>
                     {
                         lock (handleFoundLocker)
                         {
-                            ++satisfiedCheckedMove;
-                            if (satisfiedCheckedMove >= winningCondition - 2)
+                            satisfiedCheckedMove = satisfiedCheckedMove + 1;
+                            if (satisfiedCheckedMove >= numberOfNeededSatisfiedCheckedMove)
                             {
-                                cancellationTokenSource1.Cancel();
-                                cancellationTokenSource2.Cancel();
+                                frontSearchCancellationTokenSource.Cancel();
+                                behindSearchCancellationTokenSource.Cancel();
                             }
                         }
                     },
-                    cancellationTokenSource2.Token);
-                await Task.WhenAll(searchFront, searchBehind);
-                if (satisfiedCheckedMove >= numberOfNeededSatisfiedCheckedMove)
+                    behindSearchCancellationTokenSource.Token);
+                if (cancellationToken.IsCancellationRequested)
                 {
-                    return true;
+                    frontSearchCancellationTokenSource.Cancel();
+                    behindSearchCancellationTokenSource.Cancel();
+                }
+                try
+                {
+                    Task.WaitAll(searchFront, searchBehind);
+                }
+                catch
+                {
+
+                }
+                if (satisfiedCheckedMove >= numberOfNeededSatisfiedCheckedMove
+                /*&& isUnplayedMoveIgnored*/)
+                {
+                    return Task.FromResult(true);
                 }
                 else
                 {
-                    return false;
+                    return Task.FromResult(false);
                 }
             };
 
@@ -789,52 +885,62 @@
                 {
                     if (checkTask.IsCanceled)
                     {
-                        return Task.FromResult(false);
+                        return Task.CompletedTask;
                     }
                     if (checkTask.Result)
                     {
-                        numberOfSatisfiedLineSegment++;
+                        numberOfSatisfiedLineSegment = numberOfSatisfiedLineSegment + 1;
                     }
                     if (numberOfSatisfiedLineSegment >= numberOfNeededSatisifedLineSegment)
                     {
                         cancellationTokenSource.Cancel();
                     }
-                    return Task.FromResult(checkTask.Result);
+                    return Task.CompletedTask;
                 }
             };
 
             var checkVerticalLine = check(
-                    (int checkingMoveRowIndex) => checkingMoveRowIndex + 1,
-                    (int checkingMoveColumnIndex) => checkingMoveColumnIndex,
                     (int checkingMoveRowIndex) => checkingMoveRowIndex - 1,
+                    (int checkingMoveColumnIndex) => checkingMoveColumnIndex,
+                    (int checkingMoveRowIndex) => checkingMoveRowIndex + 1,
                     (int checkingMoveColumnIndex) => checkingMoveColumnIndex,
                     cancellationToken)
                 .ContinueWith(handleFinishedCheckTask);
             var checkHorizontalLine = check(
                     (int checkingMoveRowIndex) => checkingMoveRowIndex,
-                    (int checkingMoveColumnIndex) => checkingMoveColumnIndex + 1,
-                    (int checkingMoveRowIndex) => checkingMoveRowIndex,
                     (int checkingMoveColumnIndex) => checkingMoveColumnIndex - 1,
+                    (int checkingMoveRowIndex) => checkingMoveRowIndex,
+                    (int checkingMoveColumnIndex) => checkingMoveColumnIndex + 1,
                     cancellationToken)
                 .ContinueWith(handleFinishedCheckTask);
             var checkLeftDiagonal = check(
-                    (int checkingMoveRowIndex) => checkingMoveRowIndex + 1,
-                    (int checkingMoveColumnIndex) => checkingMoveColumnIndex + 1,
                     (int checkingMoveRowIndex) => checkingMoveRowIndex - 1,
                     (int checkingMoveColumnIndex) => checkingMoveColumnIndex - 1,
+                    (int checkingMoveRowIndex) => checkingMoveRowIndex + 1,
+                    (int checkingMoveColumnIndex) => checkingMoveColumnIndex + 1,
                     cancellationToken)
                 .ContinueWith(handleFinishedCheckTask);
             var checkRightDiagonal = check(
-                    (int checkingMoveRowIndex) => checkingMoveRowIndex + 1,
-                    (int checkingMoveColumnIndex) => checkingMoveColumnIndex - 1,
                     (int checkingMoveRowIndex) => checkingMoveRowIndex - 1,
                     (int checkingMoveColumnIndex) => checkingMoveColumnIndex + 1,
+                    (int checkingMoveRowIndex) => checkingMoveRowIndex + 1,
+                    (int checkingMoveColumnIndex) => checkingMoveColumnIndex - 1,
                     cancellationToken)
                 .ContinueWith(handleFinishedCheckTask);
 
-            Task.WaitAll(checkVerticalLine, checkHorizontalLine, checkLeftDiagonal, checkRightDiagonal);
+            try
+            {
+                Task.WaitAll(checkVerticalLine, checkHorizontalLine, checkLeftDiagonal, checkRightDiagonal);
+            }
+            catch (AggregateException aggregateException)
+            {
+                if (!(aggregateException.InnerException is TaskCanceledException))
+                {
+                    throw;
+                }
+            }
 
-            if (numberOfSatisfiedLineSegment == 2)
+            if (numberOfSatisfiedLineSegment >= 2)
             {
                 result.Add(new BlockForkMoveType());
             }
@@ -889,7 +995,10 @@
 
                     while (true)
                     {
-                        cancellationToken.ThrowIfCancellationRequested();
+                        if (cancellationToken.IsCancellationRequested)
+                        {
+                            return Task.FromCanceled(cancellationToken);
+                        }
 
                         checkedTimes++;
 
@@ -957,7 +1066,7 @@
                     {
                         lock (handleFoundLocker)
                         {
-                            ++numberOfFoundInFrontOpponentMove;
+                            numberOfFoundInFrontOpponentMove = numberOfFoundInFrontOpponentMove + 1;
                             if (numberOfFoundInFrontOpponentMove + numberOfFoundInBehindOpponentMove >= numberOfNeededSatisfiedCheckedMove)
                             {
                                 cancellationTokenSource1.Cancel();
@@ -987,7 +1096,7 @@
                     {
                         lock (handleFoundLocker)
                         {
-                            ++numberOfFoundInBehindOpponentMove;
+                            numberOfFoundInBehindOpponentMove = numberOfFoundInBehindOpponentMove + 1;
                             if (numberOfFoundInFrontOpponentMove + numberOfFoundInBehindOpponentMove >= numberOfNeededSatisfiedCheckedMove)
                             {
                                 cancellationTokenSource1.Cancel();
@@ -1022,11 +1131,11 @@
                 {
                     if (checkTask.IsCanceled)
                     {
-                        return Task.FromResult(false);
+                        return Task.CompletedTask;
                     }
                     if (checkTask.Result)
                     {
-                        numberOfSatisfiedLineSegment++;
+                        numberOfNeededSatisfiedLineSegment = numberOfSatisfiedLineSegment + 1;
                     }
                     if (numberOfSatisfiedLineSegment >= numberOfNeededSatisfiedLineSegment)
                     {
@@ -1037,31 +1146,31 @@
             };
 
             var checkVerticalLine = check(
-                    (int checkingMoveRowIndex) => checkingMoveRowIndex + 1,
-                    (int checkingMoveColumnIndex) => checkingMoveColumnIndex,
                     (int checkingMoveRowIndex) => checkingMoveRowIndex - 1,
+                    (int checkingMoveColumnIndex) => checkingMoveColumnIndex,
+                    (int checkingMoveRowIndex) => checkingMoveRowIndex + 1,
                     (int checkingMoveColumnIndex) => checkingMoveColumnIndex,
                     cancellationToken)
                 .ContinueWith(handleFinishedCheckTask);
             var checkHorizontalLine = check(
                     (int checkingMoveRowIndex) => checkingMoveRowIndex,
-                    (int checkingMoveColumnIndex) => checkingMoveColumnIndex + 1,
-                    (int checkingMoveRowIndex) => checkingMoveRowIndex,
                     (int checkingMoveColumnIndex) => checkingMoveColumnIndex - 1,
+                    (int checkingMoveRowIndex) => checkingMoveRowIndex,
+                    (int checkingMoveColumnIndex) => checkingMoveColumnIndex + 1,
                     cancellationToken)
                 .ContinueWith(handleFinishedCheckTask);
             var checkLeftDiagonal = check(
-                    (int checkingMoveRowIndex) => checkingMoveRowIndex + 1,
-                    (int checkingMoveColumnIndex) => checkingMoveColumnIndex + 1,
                     (int checkingMoveRowIndex) => checkingMoveRowIndex - 1,
                     (int checkingMoveColumnIndex) => checkingMoveColumnIndex - 1,
+                    (int checkingMoveRowIndex) => checkingMoveRowIndex + 1,
+                    (int checkingMoveColumnIndex) => checkingMoveColumnIndex + 1,
                     cancellationToken)
                 .ContinueWith(handleFinishedCheckTask);
             var checkRightDiagonal = check(
-                    (int checkingMoveRowIndex) => checkingMoveRowIndex + 1,
-                    (int checkingMoveColumnIndex) => checkingMoveColumnIndex - 1,
                     (int checkingMoveRowIndex) => checkingMoveRowIndex - 1,
                     (int checkingMoveColumnIndex) => checkingMoveColumnIndex + 1,
+                    (int checkingMoveRowIndex) => checkingMoveRowIndex + 1,
+                    (int checkingMoveColumnIndex) => checkingMoveColumnIndex - 1,
                     cancellationToken)
                 .ContinueWith(handleFinishedCheckTask);
 

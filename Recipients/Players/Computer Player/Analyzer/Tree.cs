@@ -34,9 +34,9 @@ namespace ComputerPlayer.Analyzer
     //public interface ITreeRoot : ITreeComponent, INextMovesPredictableMove, INextMovesPredictedMove { }
     public interface IGrowingTreeComponent : ITreeComponent, INextMovesPredictableMove, INextMovesPredictedMove { }
     public interface ILivingTreeComponent : ITreeComponent, IPreviousMoveAccessibleMove, IPreviousMoveSpecifiableMove { }
-    public interface ITreeBranch : IGrowingTreeComponent { }
+    public interface ITreeBranch : IGrowingTreeComponent, ILivingTreeComponent { }
     public interface ITreeLeaf : ILivingTreeComponent { }
-    public interface ITreeFlower : IGrowingTreeComponent { }
+    public interface ITreeFlower : IGrowingTreeComponent, ILivingTreeComponent { }
     public interface ITreeFruit : ILivingTreeComponent { }
 
     public interface ITree
@@ -66,12 +66,14 @@ namespace ComputerPlayer.Analyzer
 
             _lastPlayedMove = lastPlayedMove;
             _predictedNextMoves = null;
+            _hasBeenInitialized = false;
         }
 
         public IMoveRetriever PlayedMoves => GetMoveRetriever();
         protected Tuple<IPlayer, IPlayer> Players { get; private set; }
         protected IBoard PlayingBoard { get; private set; }
 
+        private bool _hasBeenInitialized;
         private ITreeComponent? _root;
         protected ITreeComponent Root
         {
@@ -98,33 +100,35 @@ namespace ComputerPlayer.Analyzer
         {
             get
             {
-                if (_predictedNextMoves is not null)
+                if (_hasBeenInitialized)
                 {
-                    return _predictedNextMoves;
+                    return _predictedNextMoves is not null ? _predictedNextMoves : throw new NotImplementedException("The predicted next moves has seemed like incomplete intialized.");
                 }
                 else
                 {
-                    if (_lastPlayedMove is not null)
+                    _hasBeenInitialized = true;
+                    if (_predictedNextMoves is not null)
                     {
-                        var mockOfRoot = new Mock<IGrowingTreeComponent>();
-                        mockOfRoot.Setup((root) => root.Row).Returns(_lastPlayedMove.Row);
-                        mockOfRoot.Setup((root) => root.Column).Returns(_lastPlayedMove.Column);
-                        mockOfRoot.Setup((root) => root.Player).Returns(_lastPlayedMove.Player);
-                        uint componentHeight = 0;
-                        mockOfRoot.Setup((root) => root.ComponentHeight).Returns(componentHeight);
-
-                        var nextMoves = new List<IMove>();
-                        mockOfRoot.Setup((root) => root.PredictedNextMoves).Returns(nextMoves);
-                        mockOfRoot.Setup((root) => root.PredictableNextMoves).Returns(nextMoves);
-                        Root = mockOfRoot.Object;
-
-                        Sowing(Root, GetMoveRetriever());
-                        _predictedNextMoves = nextMoves;
                         return _predictedNextMoves;
                     }
                     else
                     {
-                        throw new NotImplementedException();
+                        if (_lastPlayedMove is not null)
+                        {
+                            Sowing(_lastPlayedMove, GetMoveRetriever());
+                            if (_predictedNextMoves is not null)
+                            {
+                                return _predictedNextMoves;
+                            }
+                            else
+                            {
+                                throw new NotImplementedException("When trying to predict the next moves with new played moves and new last played move, it seem like the Sowing method don't work as expected, PredictedNextMoves set method hasn't called which mean _predictedNextMoves field stay as null.");
+                            }
+                        }
+                        else
+                        {
+                            throw new NotImplementedException("When trying to predict the next moves with new played moves and new last played move, it seem like last palyed move is missing.");
+                        }
                     }
                 }
             }
@@ -175,31 +179,22 @@ namespace ComputerPlayer.Analyzer
         public void Sowing(IMove newSeed, IMoveRetriever newSoil)
         {
             // remove everything unless the root
-            foreach (var predictedMove in PredictedNextMoves)
-            {
-                if (predictedMove is ITreeComponent branch)
-                {
-                    Prune(branch);
-                }
-                else
-                {
-                    throw new NotImplementedException();
-                }
-            }
+            PredictedNextMoves = Enumerable.Empty<IMove>();
             // move root to new soil
             _playedMoveLog = new PlayedMoveLog(PlayingBoard, newSoil);
             // regrowth root
-            var predictedMoves = new List<IMove>();
             var mockOfGrowingTreeRoot = new Mock<IGrowingTreeComponent>();
             mockOfGrowingTreeRoot.Setup((treeComponent) => treeComponent.Row).Returns(newSeed.Row);
             mockOfGrowingTreeRoot.Setup((treeComponent) => treeComponent.Column).Returns(newSeed.Column);
             mockOfGrowingTreeRoot.Setup((treeComponent) => treeComponent.Player).Returns(newSeed.Player);
             uint componentHeight = 0;
             mockOfGrowingTreeRoot.Setup((treeComponent) => treeComponent.ComponentHeight).Returns(componentHeight);
+            var predictedMoves = new List<IMove>();
             mockOfGrowingTreeRoot.Setup((growingTreeComponent) => growingTreeComponent.PredictableNextMoves).Returns(predictedMoves);
             mockOfGrowingTreeRoot.Setup((growingTreeComponent) => growingTreeComponent.PredictedNextMoves).Returns(predictedMoves);
             Growth(mockOfGrowingTreeRoot.Object);
             PredictedNextMoves = predictedMoves;
+            Root = mockOfGrowingTreeRoot.Object;
         }
 
         public class NodeHeightLimitationException : Exception { }
@@ -207,7 +202,7 @@ namespace ComputerPlayer.Analyzer
 
         internal void Growth(IGrowingTreeComponent node)
         {
-            var treeHeightLimitation = (PlayingBoard.WinningCondition - 2) * 2 + 1 + 2;
+            var treeHeightLimitation = ((PlayingBoard.WinningCondition - 2) * 2 + 1 + 2) * 2;
 
             if (!(node.ComponentHeight < treeHeightLimitation))
             {
@@ -240,7 +235,7 @@ namespace ComputerPlayer.Analyzer
             foreach (var predictedMoves in nextPossibleMoves)
             {
                 node.PredictableNextMoves.Add(predictedMoves);
-                predictedMoves.ComponentHeight = node.ComponentHeight + 1;
+                predictedMoves.ComponentHeight = (node.ComponentHeight + 1);
                 try
                 {
                     if (predictedMoves is IGrowingTreeComponent growingTreeComponent)
@@ -292,7 +287,15 @@ namespace ComputerPlayer.Analyzer
 
             public IMove? Retrieve(int row, int column)
             {
-                throw new NotImplementedException();
+                var move = _playedMoveRetriever.Retrieve(row, column);
+                if (move is null)
+                {
+                    while (move is IPreviousMoveAccessibleMove previousMoveAccessible)
+                    {
+                        move = previousMoveAccessible.PreviousMove;
+                    }
+                }
+                return move;
             }
         }
 
@@ -303,29 +306,32 @@ namespace ComputerPlayer.Analyzer
                 _playedMoveEnumerator = playedMoveEnumerator;
                 _originalPredictedPreviousMoveAccessibleMove = predictedPreviousMoveAccessibleMove;
                 _currentPredictedMove = _originalPredictedPreviousMoveAccessibleMove;
-                _hasTraveled = false;
+                _hasMovedToPreviousMove = false;
             }
 
             private IPreviousMoveAccessibleMove _originalPredictedPreviousMoveAccessibleMove;
             private IMove _currentPredictedMove;
-            private bool _hasTraveled;
+            private bool _hasMovedToPreviousMove;
             private IEnumerator<IMove> _playedMoveEnumerator;
 
             private bool disposedValue;
 
-            public IMove Current => _hasTraveled ? _currentPredictedMove : _playedMoveEnumerator.Current;
+            public IMove Current => _hasMovedToPreviousMove ? _currentPredictedMove : _playedMoveEnumerator.Current;
 
             object IEnumerator.Current => Current;
 
             public bool MoveNext()
             {
-                if (!_hasTraveled
-                    || _playedMoveEnumerator.MoveNext())
+                if (_playedMoveEnumerator.MoveNext() is true)
+                {
+                    return true;
+                }
+                else
                 {
                     if (_currentPredictedMove is IPreviousMoveAccessibleMove previousMoveAccessibleMove)
                     {
                         _currentPredictedMove = previousMoveAccessibleMove.PreviousMove;
-                        _hasTraveled = true;
+                        //_hasMovedToPreviousMove = true;
                         return true;
                     }
                     else
@@ -333,12 +339,11 @@ namespace ComputerPlayer.Analyzer
                         return false;
                     }
                 }
-                return true;
             }
 
             public void Reset()
             {
-                _hasTraveled = false;
+                _hasMovedToPreviousMove = false;
                 _currentPredictedMove = _originalPredictedPreviousMoveAccessibleMove;
             }
 
@@ -409,6 +414,8 @@ namespace ComputerPlayer.Analyzer
 
             // predict next possible move locations
             IEnumerable<Tuple<int, int>> nextPossibleLocations = Enumerable.Empty<Tuple<int, int>>();
+
+            var playedMoves = nutrition.ToList();
             //if (node is IPreviousMoveAccessibleMove previousMoveAccessibleNode
             //    && previousMoveAccessibleNode.PreviousMove is ICategorizableMove previousMoveCategorizedNode
             //    && previousMoveCategorizedNode.Categories.OfType<IForkMoveType>().Any()
@@ -419,35 +426,35 @@ namespace ComputerPlayer.Analyzer
 
             //}
             //else
-            if (node is IPreviousMoveAccessibleMove previousNode
-                && previousNode.PreviousMove is IPreviousMoveAccessibleMove previousOfPreviousNode
-                && previousOfPreviousNode.PreviousMove is INextMovesPredictedMove previousOfPreviousNextMovesPredictedNode)
-            {
-                var sameRankGeneratedNodes = previousOfPreviousNextMovesPredictedNode.PredictedNextMoves.Where((move) => !move.Equals(node));
-                nextPossibleLocations.Concat(sameRankGeneratedNodes.Select((move) => new Tuple<int, int>(move.Row, move.Column)));
+            //if (node is IPreviousMoveAccessibleMove previousNode
+            //    && previousNode.PreviousMove is IPreviousMoveAccessibleMove previousOfPreviousNode
+            //    && previousOfPreviousNode.PreviousMove is INextMovesPredictedMove previousOfPreviousNextMovesPredictedNode)
+            //{
+            //    var sameRankGeneratedNodes = previousOfPreviousNextMovesPredictedNode.PredictedNextMoves.Where((move) => !move.Equals(node));
+            //    nextPossibleLocations.Concat(sameRankGeneratedNodes.Select((move) => new Tuple<int, int>(move.Row, move.Column)));
 
-                var minimumRow = node.Row - base.PlayingBoard.WinningCondition;
-                if (minimumRow < 0) { minimumRow = 0; }
-                var maximumRow = node.Row + base.PlayingBoard.WinningCondition;
-                if (maximumRow > base.PlayingBoard.NumberOfColumns) { maximumRow = base.PlayingBoard.NumberOfColumns; }
+            //    var minimumRow = node.Row - base.PlayingBoard.WinningCondition;
+            //    if (minimumRow < 0) { minimumRow = 0; }
+            //    var maximumRow = node.Row + base.PlayingBoard.WinningCondition;
+            //    if (maximumRow > base.PlayingBoard.NumberOfColumns) { maximumRow = base.PlayingBoard.NumberOfColumns; }
 
-                var minimumColumn = node.Column - base.PlayingBoard.WinningCondition;
-                if (minimumColumn < 0) { minimumColumn = 0; }
-                var maximumColumn = node.Column + base.PlayingBoard.WinningCondition;
-                if (maximumColumn > base.PlayingBoard.NumberOfColumns) { maximumColumn = base.PlayingBoard.NumberOfColumns; }
+            //    var minimumColumn = node.Column - base.PlayingBoard.WinningCondition;
+            //    if (minimumColumn < 0) { minimumColumn = 0; }
+            //    var maximumColumn = node.Column + base.PlayingBoard.WinningCondition;
+            //    if (maximumColumn > base.PlayingBoard.NumberOfColumns) { maximumColumn = base.PlayingBoard.NumberOfColumns; }
 
-                for (int row = minimumRow; row <= maximumRow; row++)
-                {
-                    for (int column = minimumColumn; column <= maximumColumn; column++)
-                    {
-                        if (nutrition.Retrieve(row, column) is null)
-                        {
-                            nextPossibleLocations = nextPossibleLocations.Append(new Tuple<int, int>(row, column));
-                        }
-                    }
-                }
-            }
-            else
+            //    for (int row = minimumRow; row <= maximumRow; row++)
+            //    {
+            //        for (int column = minimumColumn; column <= maximumColumn; column++)
+            //        {
+            //            if (nutrition.Retrieve(row, column) is null)
+            //            {
+            //                nextPossibleLocations = nextPossibleLocations.Append(new Tuple<int, int>(row, column));
+            //            }
+            //        }
+            //    }
+            //}
+            //else
             {
                 var mockOfIEqualityComparer = new Mock<IEqualityComparer<Tuple<int, int>>>();
                 mockOfIEqualityComparer
@@ -460,6 +467,7 @@ namespace ComputerPlayer.Analyzer
                 var possibleLocations = new HashSet<Tuple<int, int>>(mockOfIEqualityComparer.Object);
                 foreach (var playedMove in nutrition)
                 {
+
                     var minimumRow = node.Row - base.PlayingBoard.WinningCondition;
                     if (minimumRow < 0) { minimumRow = 0; }
                     var maximumRow = node.Row + base.PlayingBoard.WinningCondition;
@@ -478,6 +486,7 @@ namespace ComputerPlayer.Analyzer
                         }
                     }
                 }
+                possibleLocations.RemoveWhere((location) => nutrition.Any((playedMove) => playedMove.Row == location.Item1 && playedMove.Column == location.Item2));
                 nextPossibleLocations = nextPossibleLocations.Concat(possibleLocations);
             }
 
@@ -504,7 +513,8 @@ namespace ComputerPlayer.Analyzer
                     ((IPreviousMoveSpecifiableMove)product).PreviousMove = node;
                     ((ICategorizableMove)product).Categories.Concat(categories);
                     result.AddFirst(product);
-                }
+                } 
+                else
                 // check if this move is last playable move?
                 if (canOnlyPlayOneMoreMove)
                 {
@@ -514,6 +524,7 @@ namespace ComputerPlayer.Analyzer
                     result.AddFirst(product);
                     continue;
                 }
+                else
                 if (categories.OfType<IForkMoveType>().Any()
                     || categories.OfType<IBlockWinningMoveType>().Any()
                     || categories.OfType<IBlockForkMoveType>().Any())
@@ -523,6 +534,7 @@ namespace ComputerPlayer.Analyzer
                     ((ICategorizableMove)product).Categories.Concat(categories);
                     result.AddFirst(product);
                 }
+                else
                 if (categories.OfType<IOffensiveMoveType>().Any()
                     || categories.OfType<IDefensiveMoveType>().Any())
                 {
