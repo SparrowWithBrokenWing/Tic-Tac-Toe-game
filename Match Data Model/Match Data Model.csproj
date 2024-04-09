@@ -8,20 +8,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Message System\Correlation Identifier\Correlation Identifier.csproj" />
-    <ProjectReference Include="..\Message System\Dynamic Router\Dynamic Router.csproj" />
-    <ProjectReference Include="..\Message System\Message Channel Factory\Message Channel Factory.csproj" />
-    <ProjectReference Include="..\Message System\Message Channel\Message Channel.csproj" />
-    <ProjectReference Include="..\Message System\Message Content Enricher\Message Content Enricher.csproj" />
-    <ProjectReference Include="..\Message System\Message Dispatcher\Message Dispatcher.csproj" />
-    <ProjectReference Include="..\Message System\Message Recipient\Message Receiver.csproj" />
-    <ProjectReference Include="..\Message System\Message Router\Message Router.csproj" />
-    <ProjectReference Include="..\Message System\Message Transformation\Message Transformation.csproj" />
-    <ProjectReference Include="..\Message System\Message\Message.csproj" />
+    <Folder Include="Match Object\" />
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Match Object\" />
+    <ProjectReference Include="..\Message System Design Pattern\Message System Design Pattern.csproj" />
   </ItemGroup>
 
 </Project>

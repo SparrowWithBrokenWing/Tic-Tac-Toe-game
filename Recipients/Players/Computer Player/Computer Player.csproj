@@ -13,8 +13,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\Match Data Model\Match Data Model.csproj" />
-    <ProjectReference Include="..\..\..\Message System\Message Channel\Message Channel.csproj" />
-    <ProjectReference Include="..\..\..\Message System\Message\Message.csproj" />
   </ItemGroup>
 
 </Project>

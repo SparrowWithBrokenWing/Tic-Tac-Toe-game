@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <RootNamespace>Message_System_Design_Pattern</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Folder Include="Message Channel\" />
+    <Folder Include="Message Construction\Correlation Identifier\" />
+    <Folder Include="Message Construction\Message\Identified Message\" />
+    <Folder Include="Message Endpoint\" />
+    <Folder Include="Message Routing\" />
+    <Folder Include="Message Transformation\" />
+  </ItemGroup>
+
+</Project>
